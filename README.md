@@ -22,10 +22,10 @@ Open `index.html` directly in a browser. There is no build step, package manager
 All tunable values are grouped in the top-level `CONFIG` object in `script.js`.
 
 - Edit `CONFIG.gunQuestions` to change gun unlock questions and accepted answers.
-- Edit `CONFIG.waveConfigs` to change enemy counts by wave.
+- Edit `CONFIG.waveConfigs` to change enemy counts and per-wave spawn pacing.
 - Edit `CONFIG.guns`, `CONFIG.fireUpgradeCosts`, and `CONFIG.gunUnlockCosts` to tune upgrade progression.
 - Edit `CONFIG.zombieTypes` to tune zombie health, rewards, colors, and sprite dimensions.
-- Edit `CONFIG.spawnInterval`, `CONFIG.zombieSpeed`, and `CONFIG.bulletSpeed` for pacing values.
+- Edit `CONFIG.zombieSpeed` and `CONFIG.bulletSpeed` for movement pacing values.
 
 ## GitHub Pages
 

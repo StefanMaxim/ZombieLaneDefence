@@ -82,8 +82,8 @@ const CONFIG = {
     { name: 'SMG', baseInterval: 180, upgradeIntervals: [140, 100, 70] },
     { name: 'Railgun', baseInterval: 60, upgradeIntervals: [45, 32, 20] },
   ],
-  fireUpgradeCosts: [10, 20, 25],
-  gunUnlockCosts: [0, 35, 55],
+  fireUpgradeCosts: [8, 12, 20],
+  gunUnlockCosts: [0, 25, 40],
   gunQuestions: [
     null,
     {
@@ -96,16 +96,16 @@ const CONFIG = {
     },
   ],
   waveConfigs: [
-    { grunts: 10, maulers: 0, tanks: 0 },
-    { grunts: 3, maulers: 2, tanks: 0 },
-    { grunts: 8, maulers: 5, tanks: 0 },
-    { grunts: 10, maulers: 0, tanks: 0 },
-    { grunts: 3, maulers: 2, tanks: 0 },
-    { grunts: 8, maulers: 5, tanks: 0 },
-    { grunts: 10, maulers: 0, tanks: 0 },
-    { grunts: 3, maulers: 2, tanks: 0 },
-    { grunts: 8, maulers: 3, tanks: 0 },
-    { grunts: 4, maulers: 2, tanks: 1 },
+    { grunts: 8, maulers: 0, tanks: 0, spawnInterval: 1800 },
+    { grunts: 8, maulers: 1, tanks: 0, spawnInterval: 1700 },
+    { grunts: 10, maulers: 3, tanks: 0, spawnInterval: 1500 },
+    { grunts: 10, maulers: 0, tanks: 0, spawnInterval: 1500 },
+    { grunts: 12, maulers: 1, tanks: 0, spawnInterval: 1400 },
+    { grunts: 8, maulers: 4, tanks: 0, spawnInterval: 1300 },
+    { grunts: 10, maulers: 0, tanks: 0, spawnInterval: 1200 },
+    { grunts: 12, maulers: 0, tanks: 0, spawnInterval: 1100 },
+    { grunts: 10, maulers: 1, tanks: 0, spawnInterval: 1000 },
+    { grunts: 10, maulers: 2, tanks: 1, spawnInterval: 950 },
   ],
   zombieTypes: {
     grunt: {
@@ -151,7 +151,6 @@ const CONFIG = {
       armThickness: 10,
     },
   },
-  spawnInterval: 850,
   zombieSpeed: 80,
   bulletSpeed: 420,
 };
@@ -699,7 +698,7 @@ function buildSpawnQueue(waveIndex) {
   return types.map((type, index) => ({
     type,
     lane: Math.floor(Math.random() * CONFIG.canvas.laneCount),
-    spawnAt: index * CONFIG.spawnInterval,
+    spawnAt: index * waveConfig.spawnInterval,
   }));
 }
 
