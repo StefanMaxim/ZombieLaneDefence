@@ -82,8 +82,8 @@ const CONFIG = {
     { name: 'SMG', baseInterval: 180, upgradeIntervals: [140, 100, 70] },
     { name: 'Railgun', baseInterval: 60, upgradeIntervals: [45, 32, 20] },
   ],
-  fireUpgradeCosts: [50, 120, 250],
-  gunUnlockCosts: [0, 300, 700],
+  fireUpgradeCosts: [10, 20, 25],
+  gunUnlockCosts: [0, 35, 55],
   gunQuestions: [
     null,
     {
@@ -96,16 +96,16 @@ const CONFIG = {
     },
   ],
   waveConfigs: [
-    { grunts: 8, maulers: 0, tanks: 0 },
-    { grunts: 10, maulers: 2, tanks: 0 },
-    { grunts: 10, maulers: 4, tanks: 0 },
+    { grunts: 10, maulers: 0, tanks: 0 },
+    { grunts: 3, maulers: 2, tanks: 0 },
     { grunts: 8, maulers: 5, tanks: 0 },
-    { grunts: 8, maulers: 6, tanks: 1 },
-    { grunts: 6, maulers: 8, tanks: 1 },
-    { grunts: 5, maulers: 8, tanks: 2 },
-    { grunts: 5, maulers: 8, tanks: 3 },
-    { grunts: 4, maulers: 10, tanks: 4 },
-    { grunts: 5, maulers: 12, tanks: 6 },
+    { grunts: 10, maulers: 0, tanks: 0 },
+    { grunts: 3, maulers: 2, tanks: 0 },
+    { grunts: 8, maulers: 5, tanks: 0 },
+    { grunts: 10, maulers: 0, tanks: 0 },
+    { grunts: 3, maulers: 2, tanks: 0 },
+    { grunts: 8, maulers: 3, tanks: 0 },
+    { grunts: 4, maulers: 2, tanks: 1 },
   ],
   zombieTypes: {
     grunt: {
@@ -151,7 +151,7 @@ const CONFIG = {
       armThickness: 10,
     },
   },
-  spawnInterval: 1500,
+  spawnInterval: 850,
   zombieSpeed: 80,
   bulletSpeed: 420,
 };
@@ -264,6 +264,8 @@ function gameLoop(timestamp) {
 }
 
 function update(dt, timestamp) {
+  if (gameState !== STATE_PLAYING) return;
+
   const elapsed = performance.now() - waveStartTime;
   while (spawnQueue.length > 0 && spawnQueue[0].spawnAt <= elapsed) {
     const entry = spawnQueue.shift();
@@ -345,10 +347,15 @@ function update(dt, timestamp) {
 
   bullets = bullets.filter((bullet) => !bullet.dead);
   zombies = zombies.filter((zombie) => !zombie.dead);
+
+  if (allSpawned && zombies.length === 0) {
+    endWave();
+  }
 }
 
 function render(dt) {
   drawBackground();
+  drawDefeatFlash();
   const sortedZombies = [...zombies].sort((a, b) => a.y - b.y);
   for (const zombie of sortedZombies) {
     drawZombie(ctx, zombie);
@@ -357,6 +364,13 @@ function render(dt) {
     drawBullet(ctx, bullet);
   }
   drawPlayer(ctx, dt);
+}
+
+function drawDefeatFlash() {
+  if (defeatFlashTimer <= 0) return;
+
+  ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+  ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
 }
 
 function drawBullet(ctx, bullet) {
@@ -511,7 +525,17 @@ function startWave() {
 }
 
 function endWave() {
-  console.info('endWave called');
+  if (currentWave === CONFIG.waveConfigs.length) {
+    gameState = STATE_VICTORY;
+    showOverlay('overlay-victory');
+  } else {
+    currentWave++;
+    gameState = STATE_WAVE_WAIT;
+    document.getElementById('wave-wait-text').textContent = `Wave ${currentWave} incoming!`;
+    document.getElementById('btn-start-wave').textContent = `Start Wave ${currentWave}`;
+    showOverlay('overlay-wave-wait');
+    updateHUD();
+  }
 }
 
 function enterDefeat() {
