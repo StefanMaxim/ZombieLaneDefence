@@ -26,12 +26,12 @@ The 10-wave game is structured in **3-wave blocks per gun**. This is the intende
 
 | Block | Waves | Goal |
 |-------|-------|------|
-| Gun 1 block | 1–3 | Earn enough to fund all 3 fire-rate upgrades for Gun 1 (40 coins total) + unlock Gun 2 (25 coins) |
-| Gun 2 block | 4–6 | Earn enough to fund all 3 fire-rate upgrades for Gun 2 (40 coins total) + unlock Gun 3 (40 coins) |
-| Gun 3 block | 7–9 | Earn enough to fund all 3 fire-rate upgrades for Gun 3 (40 coins total) |
-| Victory wave | 10   | Final boss wave — Tank encounter — no further upgrades required |
+| Gun 1 block | 1–3 | Earn enough to fund all 3 fire-rate upgrades for Gun 1 (44 coins total) + unlock Gun 2 (25 coins) |
+| Gun 2 block | 4–6 | Earn enough to fund all 3 fire-rate upgrades for Gun 2 (44 coins total) + unlock Gun 3 (40 coins) |
+| Gun 3 block | 7–9 | Earn enough to fund all 3 fire-rate upgrades for Gun 3 (44 coins total); Waves 7–9 are the true endgame ramp |
+| Victory wave | 10   | Boss finale — Tank spawns last; victory triggers immediately on Tank death |
 
-**Economy per block:** Waves 1–3 yield ~66 coins cumulative. Waves 4–6 yield ~80 coins. Waves 7–9 yield ~42 coins. Wave 10 yields ~80 coins.
+**Economy per block:** Waves 1–3 yield ~74 coins cumulative. Waves 4–6 yield ~96 coins. Waves 7–9 yield ~84 coins. Wave 10 yields ~74 coins.
 
 The progression is predictable: a player who kills all zombies in every wave will always have enough coins to unlock all upgrades on schedule.
 
@@ -42,9 +42,11 @@ The progression is predictable: a player who kills all zombies in every wave wil
 - Economy is tuned around **wave blocks**, not individual wave randomness
 - Early waves must not feel punishing — wave 1 is intentionally gentle
 - The game is designed for **demonstration** (e.g. a classroom or presentation setting), not a challenge loop
-- **Earlier too-fast pacing has been intentionally corrected** — early waves now provide more breathing room
 - Spawn pacing ramps gradually across waves; reaction time and readability are prioritized over pressure
-- The Tank is the climax of the run, not a repeated grind enemy — it appears only in Wave 10
+- **Waves 7–9 are the true endgame ramp** — enemy count and spawn speed increase meaningfully each wave; they must not feel like filler before the boss
+- **Wave 10 is a staged boss finale**, not a routine wave — a small escort of grunts and maulers accompanies the Tank, with the Tank spawning last as a climactic arrival
+- The Tank is a boss, not a routine enemy — it appears only in Wave 10 and its death is the narrative climax
+- In the default `bossFinale: true` configuration, **victory triggers immediately on Tank death** — remaining escort enemies become irrelevant; there is no anticlimactic cleanup phase
 - Difficulty increase comes from both stronger enemies and incrementally faster spawn pacing — no sudden unfair spikes
 - Balance should support successful completion in a short classroom or presentation setting
 
@@ -611,11 +613,11 @@ const GUNS = [
 // upgradeIntervals[0] = tier 1, [1] = tier 2, [2] = tier 3 (milliseconds between shots)
 
 // Costs are tuned to the 3-wave block progression model (see Design Overview)
-const FIRE_UPGRADE_COSTS = [8, 12, 20];   // Tier 1, 2, 3 — total 40 coins per gun block
+const FIRE_UPGRADE_COSTS = [8, 14, 22];   // Tier 1, 2, 3 — total 44 coins per gun block
 const GUN_UNLOCK_COSTS   = [0, 25, 40];   // Gun 0 free; Gun 1 = 25c; Gun 2 = 40c
 ```
 
-**Upgrade cost rationale:** Block 1 (waves 1–3) yields ~66 coins; spending 40c on fire-rate upgrades + 25c on Gun 2 = 65c leaves a 1-coin buffer. Block 2 (waves 4–6) yields ~80 coins; spending 40c + 40c on Gun 3 = 80c is an exact fit. Block 3 (waves 7–9) yields ~42 coins; spending 40c leaves a 2-coin buffer. The player is never starved if they kill the majority of zombies.
+**Upgrade cost rationale:** Block 1 (waves 1–3) yields ~74 coins; spending 44c on fire-rate upgrades + 25c on Gun 2 = 69c leaves a 5-coin buffer. Block 2 (waves 4–6) yields ~96 coins; spending 44c + 40c on Gun 3 = 84c leaves a 12-coin buffer. Block 3 (waves 7–9) yields ~84 coins; spending 44c on fire-rate upgrades leaves a 40-coin buffer (no gun unlock in this block). The player is never starved if they kill the majority of zombies.
 
 **Gun 3 power expectation:** Gun 3 (Railgun) with all 3 fire-rate upgrades must feel **dramatically stronger** than the starting Pistol. The fully upgraded Railgun (Gun 3 Tier 3) is the payoff for the entire progression arc — it should feel "amazing" by comparison to earlier weapons and must make the Wave 10 Tank fight realistically winnable. The final weapon path is rewarding, not cosmetic; it justifies the question-gated unlock and the late-game pacing. Exact DPS numbers are tunable via CONFIG, but the design intent is non-negotiable: Gun 3 Tier 3 is the climax weapon.
 
@@ -638,9 +640,13 @@ function canBuyFireRate() {
 
 // Gun unlock: coins are a prerequisite, but unlock ALSO requires answering a question
 function canUnlockGun() {
-  return currentGun < 2 && coins >= GUN_UNLOCK_COSTS[currentGun + 1];
+  return gameState === STATE_WAVE_WAIT &&
+         currentGun < 2 &&
+         coins >= GUN_UNLOCK_COSTS[currentGun + 1];
 }
 ```
+
+Gun unlock is a **between-wave action only**. Even if the player has enough coins during `STATE_PLAYING`, they must wait until the current wave ends. The question overlay must never be triggerable mid-wave.
 
 ### Buy fire rate (`buyFireUpgrade()`)
 
@@ -661,7 +667,7 @@ Clicking the unlock button does NOT deduct coins. It opens the question overlay:
 
 ```javascript
 function triggerGunUnlock() {
-  if (!canUnlockGun()) return;
+  if (gameState !== STATE_WAVE_WAIT || !canUnlockGun()) return;
   pendingGunIndex = currentGun + 1;
   // Do NOT deduct coins here
   gameState = STATE_QUESTION;
@@ -669,6 +675,8 @@ function triggerGunUnlock() {
   // populate question text — see Section 7
 }
 ```
+
+This guard is required for correctness, not just UI polish. Disabling the button in the HUD is not sufficient on its own; `triggerGunUnlock()` must reject calls made outside `STATE_WAVE_WAIT`.
 
 ### On correct answer (inside `checkAnswer()`)
 
@@ -686,6 +694,8 @@ updateHUD();                                // 8. refresh HUD
 ```
 
 **Step 7 is critical.** `triggerGunUnlock()` calls `hideAllOverlays()` before showing `overlay-question`, which hides `overlay-wave-wait`. If step 7 is omitted, the game enters `STATE_WAVE_WAIT` with no visible overlay and no "Start Wave" button reachable — the game appears frozen even though the loop is still running. Using `hideAllOverlays()` in step 6 (rather than `hideOverlay('overlay-question')`) is defensive — it clears any stale overlay before reshowing the correct one.
+
+Because unlocks are only allowed during `STATE_WAVE_WAIT`, a successful answer always returns the player to the same proper between-wave flow they came from. It must not interrupt an active wave, skip a wave, or create a stray "Start New Wave" prompt from mid-round.
 
 Gun 3 is the final gun. `btn-gun-unlock` text changes to "Max Gun" and stays disabled when `currentGun >= 2`.
 
@@ -756,11 +766,11 @@ Show `.question-error` with text "Incorrect — please try again." Do not close 
 > The full game (10 waves) must complete in **≤ 5 minutes**.
 
 Supporting constraints:
-- Each wave has its own **`spawnInterval`** (ms between zombie spawns) defined in `WAVE_CONFIGS` — there is no global `SPAWN_INTERVAL`. Early waves use intentionally slow pacing (1800 ms) to give reaction time; pacing ramps down to 950 ms by Wave 10
-- Total enemies across all 10 waves: **~94** (see composition table below)
+- Each wave has its own **`spawnInterval`** (ms between zombie spawns) defined in `WAVE_CONFIGS` — there is no global `SPAWN_INTERVAL`. Early waves use intentionally slow pacing (1950 ms in Wave 1, 1750 ms in Wave 2) to give reaction time; pacing ramps down to 950 ms by Wave 10
+- Total enemies across all 10 waves: **~99** (see composition table below)
 - Tanks appear **only in Wave 10** by default — no HP sponges in early/mid game
 - Player should not feel stuck waiting for zombies to spawn or die
-- Early waves are intentionally forgiving; difficulty increases through both stronger enemies and gradually faster spawn pacing
+- Early waves are intentionally slightly forgiving; Waves 1-2 in particular should give the player a little extra breathing room before the game settles into its main pacing curve
 
 ### WAVE_CONFIGS (top of script.js — easy to edit)
 
@@ -768,19 +778,20 @@ Supporting constraints:
 
 ```javascript
 const WAVE_CONFIGS = [
-  { grunts:  8, maulers: 0, tanks: 0, spawnInterval: 1800 },  // W1  —  8 enemies
-  { grunts:  8, maulers: 1, tanks: 0, spawnInterval: 1700 },  // W2  —  9 enemies
-  { grunts: 10, maulers: 3, tanks: 0, spawnInterval: 1500 },  // W3  — 13 enemies
-  { grunts: 10, maulers: 0, tanks: 0, spawnInterval: 1500 },  // W4  — 10 enemies
-  { grunts: 12, maulers: 1, tanks: 0, spawnInterval: 1400 },  // W5  — 13 enemies
-  { grunts:  8, maulers: 4, tanks: 0, spawnInterval: 1300 },  // W6  — 12 enemies
-  { grunts: 10, maulers: 0, tanks: 0, spawnInterval: 1200 },  // W7  — 10 enemies
-  { grunts: 12, maulers: 0, tanks: 0, spawnInterval: 1100 },  // W8  — 12 enemies
-  { grunts: 10, maulers: 1, tanks: 0, spawnInterval: 1000 },  // W9  — 11 enemies
-  { grunts: 10, maulers: 2, tanks: 1, spawnInterval:  950 },  // W10 — 13 enemies (1 tank)
+  { grunts:  8, maulers: 0, tanks: 0, spawnInterval: 1950 },                          // W1  —  8 enemies
+  { grunts:  6, maulers: 1, tanks: 0, spawnInterval: 1750 },                          // W2  —  7 enemies
+  { grunts: 10, maulers: 4, tanks: 0, spawnInterval: 1450 },                          // W3  — 14 enemies
+  { grunts: 10, maulers: 1, tanks: 0, spawnInterval: 1400 },                          // W4  — 11 enemies
+  { grunts:  8, maulers: 2, tanks: 0, spawnInterval: 1250 },                          // W5  — 10 enemies
+  { grunts:  8, maulers: 4, tanks: 0, spawnInterval: 1150 },                          // W6  — 12 enemies
+  { grunts:  6, maulers: 2, tanks: 0, spawnInterval: 1100 },                          // W7  —  8 enemies (ramp begins)
+  { grunts:  8, maulers: 2, tanks: 0, spawnInterval: 1000 },                          // W8  — 10 enemies
+  { grunts: 10, maulers: 2, tanks: 0, spawnInterval:  900 },                          // W9  — 12 enemies
+  { grunts:  4, maulers: 2, tanks: 1, spawnInterval:  950, bossFinale: true },        // W10 —  7 enemies (boss finale)
 ];
-// Total enemies: ~111 — no global SPAWN_INTERVAL; each wave uses its own spawnInterval field
-// spawnInterval ramps from 1800 ms (Wave 1) down to 950 ms (Wave 10) for gradual pacing increase
+// Total enemies: ~99 — no global SPAWN_INTERVAL; each wave uses its own spawnInterval field
+// spawnInterval ramps from 1950 ms (Wave 1) down to 900 ms (Wave 9); Wave 10 uses 950 ms (escort + boss)
+// bossFinale: true on Wave 10 — victory triggers immediately on Tank death; escort enemies become irrelevant
 
 const ZOMBIE_SPEED   = 80;   // pixels per second (default — tunable)
 const BULLET_SPEED   = 420;  // pixels per second (default — tunable)
@@ -794,19 +805,19 @@ The following table shows the intended coin yield and cumulative economy for eac
 | Wave | Composition | Coins this wave | Cumulative (in block) | Upgrade milestone |
 |------|-------------|-----------------|----------------------|-------------------|
 | 1 | 8G | ~8 | ~8 | Buy Fire Tier 1 (8c) |
-| 2 | 8G + 1M | ~18 | ~26 | Buy Fire Tier 2 (12c) |
-| 3 | 10G + 3M | ~40 | ~66 | Buy Fire Tier 3 (20c) + Unlock Gun 2 (25c) |
-| 4 | 10G | ~10 | ~10 | Buy Fire Tier 1 (8c) |
-| 5 | 12G + 1M | ~22 | ~32 | Buy Fire Tier 2 (12c) |
-| 6 | 8G + 4M | ~48 | ~80 | Buy Fire Tier 3 (20c) + Unlock Gun 3 (40c) |
-| 7 | 10G | ~10 | ~10 | Buy Fire Tier 1 (8c) |
-| 8 | 12G | ~12 | ~22 | Buy Fire Tier 2 (12c) |
-| 9 | 10G + 1M | ~20 | ~42 | Buy Fire Tier 3 (20c) — buffer remaining |
-| 10 | 10G + 2M + 1T | ~80 | — | Final boss wave — Tank encounter — no further upgrades needed |
+| 2 | 6G + 1M | ~16 | ~24 | Buy Fire Tier 2 (14c) |
+| 3 | 10G + 4M | ~50 | ~74 | Buy Fire Tier 3 (22c) + Unlock Gun 2 (25c) |
+| 4 | 10G + 1M | ~20 | ~20 | Buy Fire Tier 1 (8c) |
+| 5 | 8G + 2M | ~28 | ~48 | Buy Fire Tier 2 (14c) |
+| 6 | 8G + 4M | ~48 | ~96 | Buy Fire Tier 3 (22c) + Unlock Gun 3 (40c) |
+| 7 | 6G + 2M | ~26 | ~26 | Buy Fire Tier 1 (8c) — endgame ramp begins |
+| 8 | 8G + 2M | ~28 | ~54 | Buy Fire Tier 2 (14c) |
+| 9 | 10G + 2M | ~30 | ~84 | Buy Fire Tier 3 (22c) — fully upgraded entering boss |
+| 10 | 4G + 2M + 1T | ~74 | — | Boss finale — victory triggers on Tank death |
 
 *G = Grunt (1c), M = Mauler (10c), T = Tank (50c). Cumulative columns reset per gun block.*
 
-**Note:** Cumulative columns for waves 1–3, 4–6, and 7–9 are shown relative to the start of each block. The player enters each block at 0 spendable coins (having spent on the previous block's upgrades). Block 1 yields 66c vs 65c needed (1c buffer); Block 2 yields 80c vs 80c needed (exact); Block 3 yields 42c vs 40c needed (2c buffer).
+**Note:** Cumulative columns for waves 1–3, 4–6, and 7–9 are shown relative to the start of each block. The player enters each block at 0 spendable coins (having spent on the previous block's upgrades). Block 1 yields 74c vs 69c needed (5c buffer); Block 2 yields 96c vs 84c needed (12c buffer); Block 3 yields 84c vs 44c needed (40c buffer — no gun unlock in this block).
 
 ### Wave start (`startWave()`)
 
@@ -841,6 +852,8 @@ function endWave() {
 }
 ```
 
+For `bossFinale: true` waves, `endWave()` is called directly from within the Tank death branch in `update()` — not by the normal completion check. The `return` that follows exits `update()` before the normal `allSpawned && zombies.length === 0` path is reached.
+
 ### Wave completion condition
 
 Checked at end of every `update()` call, **after** the cleanup step (to avoid triggering before dead zombies are removed):
@@ -849,18 +862,31 @@ Checked at end of every `update()` call, **after** the cleanup step (to avoid tr
 if (allSpawned && zombies.length === 0) endWave();
 ```
 
+**Boss finale shortcut:** When `CONFIG.waveConfigs[currentWave - 1].bossFinale` is true, `endWave()` is also triggered inside `update()` the moment the Tank's `hp` reaches 0 — before the normal cleanup pass. This bypasses the `allSpawned && zombies.length === 0` check entirely for the boss wave. Remaining escort enemies are abandoned on-screen; the victory overlay fires over them.
+
+Implementation in `update()` — inside the `zombie.hp <= 0` death branch, immediately after marking `zombie.dead = true`:
+
+```javascript
+if (zombie.type === 'tank' && CONFIG.waveConfigs[currentWave - 1].bossFinale) {
+  endWave();
+  return;
+}
+```
+
 ### Boss Philosophy
 
 The Tank is not a routine enemy. It is the **culminating encounter** of the entire run.
 
+- **Waves 7–9 are the true endgame ramp.** Enemy density and spawn speed increase each wave. These waves should feel like escalating pressure, not filler. A player who coasted through waves 1–6 should feel the difficulty meaningfully increase here.
 - The Tank appears by default **only in Wave 10** — it must not appear in any earlier wave
-- It functions as the climax of the game: the final challenge after 9 waves of escalating difficulty
+- **Wave 10 is a staged boss finale.** A small escort of grunts and maulers spawns first (at 950 ms intervals), then the Tank spawns last. This staging ensures the Tank arrives as a climactic event, not buried mid-wave.
 - By Wave 10, the player who followed the intended progression will have Gun 3 fully upgraded — this must make the Tank fight feel **challenging but clearly achievable**, not impossible
 - The Tank's 100 HP justifies the late-game gun progression: a fully upgraded Railgun firing at 20 ms intervals shreds through it in a way that earlier weapons never could
 - The Tank makes Wave 10 feel **distinct** from all previous waves — it should be visually imposing, require sustained fire, and deliver a satisfying conclusion when defeated
+- **`bossFinale: true` means victory triggers on Tank death.** Once the Tank falls, the game ends — the escort enemies do not matter. This prevents the anticlimactic "cleanup" phase where the player mops up a few remaining grunts after the boss is already dead. The victory screen fires over whatever is still on-screen.
 - The Tank is the payoff, not a wall — the player's earned progression should make this fight feel earned and satisfying
 
-This philosophy is non-negotiable. Do not add Tank enemies to earlier waves, and do not increase Tank counts without understanding the effect on balance.
+This philosophy is non-negotiable. Do not add `bossFinale: true` to earlier waves. Do not set `bossFinale: false` on Wave 10 without reconsidering the post-boss cleanup problem — the anticlimactic cooldown section is the explicit problem this flag solves. Do not add Tank enemies to earlier waves.
 
 ---
 
@@ -1173,6 +1199,7 @@ Each of the following must be explicitly handled in the implementation:
 | AudioContext blocked by browser autoplay policy | `audioCtx` is `null` at startup. `ensureAudio()` creates it inside sound functions, which are only called in response to user-initiated gameplay after first interaction. |
 | Player cannot dodge defeat by switching lanes | Defeat collision check has no lane guard — switching lanes while a zombie is at `PLAYER_Y` has no effect. |
 | Gameplay during question overlay | `update()` is gated by `if (gameState !== STATE_PLAYING) return;` — no movement, spawning, collision, or defeat can occur. |
+| `bossFinale: true` — Tank dies before all grunts/maulers are cleared | `endWave()` (victory) is called immediately inside the Tank death branch in `update()`. The `return` following the call exits `update()` before the normal `allSpawned && zombies.length === 0` check. Remaining escort enemies are abandoned on-screen — victory overlay fires over them. This is the intended behavior. |
 
 ---
 
@@ -1184,7 +1211,7 @@ Every function to implement in `script.js`, with its exact responsibility:
 |----------|---------------|
 | `init()` | Entry point on `DOMContentLoaded`; wires all event listeners, initializes canvas context reference, starts RAF loop. |
 | `gameLoop(timestamp)` | RAF callback; computes capped `dt`; calls `update(dt, ts)` only if `STATE_PLAYING`; ticks effect timers; calls `render(dt)`; schedules next frame. |
-| `update(dt, timestamp)` | All per-frame game logic: spawn check, zombie movement + effects, auto-fire, bullet movement, bullet-zombie collision, player-zombie collision, entity cleanup, wave completion check. Hard-gated: returns immediately if `gameState !== STATE_PLAYING`. |
+| `update(dt, timestamp)` | All per-frame game logic: spawn check, zombie movement + effects, auto-fire, bullet movement, bullet-zombie collision, player-zombie collision, entity cleanup, wave completion check. Hard-gated: returns immediately if `gameState !== STATE_PLAYING`. Boss finale shortcut: if the dying zombie is type `tank` and `CONFIG.waveConfigs[currentWave-1].bossFinale` is true, calls `endWave()` and returns immediately — bypasses the normal `allSpawned && zombies.length === 0` path. |
 | `render(dt)` | Clears canvas and redraws all layers each frame: background, tints, lane highlight, defeat flash overlay, zombies, bullets, player. |
 | `spawnZombie(type, lane)` | Creates a zombie object from `ZOMBIE_TYPES[type]`, initializes effects fields (`opacity = 0`, random `bobPhase`), pushes to `zombies[]`. |
 | `buildSpawnQueue(waveIdx)` | Builds and shuffles a flat list of zombie entries from `WAVE_CONFIGS[waveIdx]`, assigns lanes and `spawnAt` timestamps, returns sorted array. |
@@ -1193,7 +1220,7 @@ Every function to implement in `script.js`, with its exact responsibility:
 | `triggerGunUnlock()` | Validates `canUnlockGun()`; sets `pendingGunIndex`; transitions to `STATE_QUESTION`; shows question overlay. Does NOT deduct coins. |
 | `checkAnswer()` | Reads and normalizes `#answer-input`; compares to `GUN_QUESTIONS[pendingGunIndex].answer`; on match: deducts coins, sets gun, resets tier, returns to `STATE_WAVE_WAIT`; on mismatch: shows error, leaves coins intact. |
 | `startWave()` | Clears entity arrays; builds spawn queue; sets `waveStartTime`; transitions to `STATE_PLAYING`; hides wave-wait overlay. |
-| `endWave()` | If wave 10: transitions to `STATE_VICTORY`. Otherwise: increments `currentWave`, updates overlay text, transitions to `STATE_WAVE_WAIT`. |
+| `endWave()` | If wave 10: transitions to `STATE_VICTORY`, shows victory overlay. Otherwise: increments `currentWave`, updates overlay text, transitions to `STATE_WAVE_WAIT`. Also called from `update()` immediately on Tank death when `CONFIG.waveConfigs[currentWave-1].bossFinale` is true — bypasses normal wave-complete check. |
 | `enterDefeat()` | Sets `STATE_DEFEAT`; sets `defeatFlashTimer = 300`; shows defeat overlay. |
 | `resetGame()` | Resets all state variables to Wave 1 defaults; clears entity arrays and effect timers; transitions to `STATE_WAVE_WAIT` (not title); shows wave-wait overlay. |
 | `updateHUD()` | Syncs wave, coins, gun name, fire tier DOM elements to current game state; calls `updateUpgradeButtons()`. |

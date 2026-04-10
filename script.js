@@ -82,7 +82,7 @@ const CONFIG = {
     { name: 'SMG', baseInterval: 180, upgradeIntervals: [140, 100, 70] },
     { name: 'Railgun', baseInterval: 60, upgradeIntervals: [45, 32, 20] },
   ],
-  fireUpgradeCosts: [8, 12, 20],
+  fireUpgradeCosts: [8, 14, 22],
   gunUnlockCosts: [0, 25, 40],
   gunQuestions: [
     null,
@@ -96,16 +96,16 @@ const CONFIG = {
     },
   ],
   waveConfigs: [
-    { grunts: 8, maulers: 0, tanks: 0, spawnInterval: 1800 },
-    { grunts: 8, maulers: 1, tanks: 0, spawnInterval: 1700 },
-    { grunts: 10, maulers: 3, tanks: 0, spawnInterval: 1500 },
-    { grunts: 10, maulers: 0, tanks: 0, spawnInterval: 1500 },
-    { grunts: 12, maulers: 1, tanks: 0, spawnInterval: 1400 },
-    { grunts: 8, maulers: 4, tanks: 0, spawnInterval: 1300 },
-    { grunts: 10, maulers: 0, tanks: 0, spawnInterval: 1200 },
-    { grunts: 12, maulers: 0, tanks: 0, spawnInterval: 1100 },
-    { grunts: 10, maulers: 1, tanks: 0, spawnInterval: 1000 },
-    { grunts: 10, maulers: 2, tanks: 1, spawnInterval: 950 },
+    { grunts: 8, maulers: 0, tanks: 0, spawnInterval: 1950 },
+    { grunts: 6, maulers: 1, tanks: 0, spawnInterval: 1750 },
+    { grunts: 10, maulers: 4, tanks: 0, spawnInterval: 1450 },
+    { grunts: 10, maulers: 1, tanks: 0, spawnInterval: 1400 },
+    { grunts: 8, maulers: 2, tanks: 0, spawnInterval: 1250 },
+    { grunts: 8, maulers: 4, tanks: 0, spawnInterval: 1150 },
+    { grunts: 6, maulers: 2, tanks: 0, spawnInterval: 1100 },
+    { grunts: 8, maulers: 2, tanks: 0, spawnInterval: 1000 },
+    { grunts: 10, maulers: 2, tanks: 0, spawnInterval: 900 },
+    { grunts: 4, maulers: 2, tanks: 1, spawnInterval: 950, bossFinale: true },
   ],
   zombieTypes: {
     grunt: {
@@ -200,17 +200,36 @@ function init() {
 }
 
 function initEventListeners() {
-  document.getElementById('btn-play').addEventListener('click', startGame);
-  document.getElementById('btn-start-wave').addEventListener('click', startWave);
-  document.getElementById('btn-fire-upgrade').addEventListener('click', buyFireUpgrade);
-  document.getElementById('btn-gun-unlock').addEventListener('click', triggerGunUnlock);
-  document.getElementById('btn-submit-answer').addEventListener('click', checkAnswer);
+  document.getElementById('btn-play').addEventListener('click', () => {
+    ensureAudio();
+    startGame();
+  });
+  document.getElementById('btn-start-wave').addEventListener('click', () => {
+    ensureAudio();
+    startWave();
+  });
+  document.getElementById('btn-fire-upgrade').addEventListener('click', () => {
+    ensureAudio();
+    buyFireUpgrade();
+  });
+  document.getElementById('btn-gun-unlock').addEventListener('click', () => {
+    ensureAudio();
+    triggerGunUnlock();
+  });
+  document.getElementById('btn-submit-answer').addEventListener('click', () => {
+    ensureAudio();
+    checkAnswer();
+  });
   document.getElementById('answer-input').addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
+      ensureAudio();
       checkAnswer();
     }
   });
-  document.getElementById('btn-retry').addEventListener('click', resetGame);
+  document.getElementById('btn-retry').addEventListener('click', () => {
+    ensureAudio();
+    resetGame();
+  });
   document.addEventListener('keydown', handleMovement);
 }
 
@@ -328,10 +347,16 @@ function update(dt, timestamp) {
         playHitSound();
 
         if (zombie.hp <= 0) {
+          const waveConfig = CONFIG.waveConfigs[currentWave - 1];
           zombie.dead = true;
           coins += zombie.coinReward;
           playDeathSound();
           updateHUD();
+
+          if (zombie.type === 'tank' && waveConfig.bossFinale) {
+            endWave();
+            return;
+          }
         }
       }
     }
@@ -557,7 +582,7 @@ function buyFireUpgrade() {
 }
 
 function triggerGunUnlock() {
-  if (!canUnlockGun()) return;
+  if (gameState !== STATE_WAVE_WAIT || !canUnlockGun()) return;
 
   pendingGunIndex = currentGun + 1;
   gameState = STATE_QUESTION;
@@ -646,6 +671,7 @@ function updateUpgradeButtons() {
   const frBtn = document.getElementById('btn-fire-upgrade');
   const gunBtn = document.getElementById('btn-gun-unlock');
   const inQuestion = gameState === STATE_QUESTION;
+  const inWaveWait = gameState === STATE_WAVE_WAIT;
 
   if (fireUpgradeTier < CONFIG.fireUpgradeCosts.length) {
     frBtn.disabled = inQuestion || coins < CONFIG.fireUpgradeCosts[fireUpgradeTier];
@@ -657,7 +683,7 @@ function updateUpgradeButtons() {
 
   if (currentGun < CONFIG.guns.length - 1) {
     const nextIdx = currentGun + 1;
-    gunBtn.disabled = inQuestion || coins < CONFIG.gunUnlockCosts[nextIdx];
+    gunBtn.disabled = !inWaveWait || inQuestion || coins < CONFIG.gunUnlockCosts[nextIdx];
     gunBtn.textContent = `Unlock ${CONFIG.guns[nextIdx].name} (${CONFIG.gunUnlockCosts[nextIdx]}c)`;
   } else {
     gunBtn.disabled = true;
@@ -671,7 +697,8 @@ function canBuyFireRate() {
 }
 
 function canUnlockGun() {
-  return currentGun < CONFIG.guns.length - 1 &&
+  return gameState === STATE_WAVE_WAIT &&
+    currentGun < CONFIG.guns.length - 1 &&
     coins >= CONFIG.gunUnlockCosts[currentGun + 1];
 }
 
@@ -735,17 +762,20 @@ function spawnZombie(type, lane) {
 function buildSpawnQueue(waveIndex) {
   const waveConfig = CONFIG.waveConfigs[waveIndex];
   const types = [];
+  const tanks = [];
 
   for (let i = 0; i < waveConfig.grunts; i++) types.push('grunt');
   for (let i = 0; i < waveConfig.maulers; i++) types.push('mauler');
-  for (let i = 0; i < waveConfig.tanks; i++) types.push('tank');
+  for (let i = 0; i < waveConfig.tanks; i++) tanks.push('tank');
 
   for (let i = types.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [types[i], types[j]] = [types[j], types[i]];
   }
 
-  return types.map((type, index) => ({
+  const orderedTypes = [...types, ...tanks];
+
+  return orderedTypes.map((type, index) => ({
     type,
     lane: Math.floor(Math.random() * CONFIG.canvas.laneCount),
     spawnAt: index * waveConfig.spawnInterval,
@@ -764,6 +794,10 @@ function fireInterval() {
 function ensureAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
   }
 }
 
