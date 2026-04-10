@@ -142,6 +142,12 @@ To replace the music later:
 
 Browser autoplay rules may block music before the first user gesture. The game works around that by starting the soundtrack on the first valid interaction such as `Play`, `Start Wave`, `Buy Fire Rate`, `Unlock Gun`, `Submit`, or `Try Again`. After that first interaction, the track keeps looping across title, gameplay, wave transitions, question prompts, victory, and defeat.
 
+GitHub Pages troubleshooting:
+
+- Keep the soundtrack path relative, for example `src: '91476_Glorious_morning.mp3'`
+- The filename is case-sensitive on GitHub Pages and must match the real file exactly
+- If playback fails, open the browser console and look for `Soundtrack failed to load.` or `Soundtrack playback failed.` logs, which include both the configured filename and the resolved URL
+
 ## GitHub Pages deployment
 
 This project uses only relative paths:

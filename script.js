@@ -893,10 +893,22 @@ function ensureAudio() {
 }
 
 function initSoundtrack() {
-  soundtrackEl = new Audio(CONFIG.soundtrack.src);
+  const soundtrackUrl = new URL(CONFIG.soundtrack.src, document.baseURI).href;
+
+  soundtrackEl = new Audio(soundtrackUrl);
   soundtrackEl.loop = CONFIG.soundtrack.loop;
   soundtrackEl.volume = CONFIG.soundtrack.volume;
   soundtrackEl.preload = 'auto';
+  soundtrackEl.addEventListener('error', () => {
+    const mediaError = soundtrackEl.error;
+    console.error('Soundtrack failed to load.', {
+      configuredSrc: CONFIG.soundtrack.src,
+      resolvedSrc: soundtrackUrl,
+      code: mediaError ? mediaError.code : null,
+      message: mediaError ? mediaError.message : null,
+    });
+  });
+  soundtrackEl.load();
 }
 
 function startSoundtrack() {
@@ -904,7 +916,13 @@ function startSoundtrack() {
 
   const playPromise = soundtrackEl.play();
   if (playPromise && typeof playPromise.catch === 'function') {
-    playPromise.catch(() => {});
+    playPromise.catch((error) => {
+      console.error('Soundtrack playback failed.', {
+        configuredSrc: CONFIG.soundtrack.src,
+        resolvedSrc: soundtrackEl.currentSrc,
+        error,
+      });
+    });
   }
 }
 
