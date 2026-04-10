@@ -526,12 +526,14 @@ function startWave() {
 function endWave() {
   if (currentWave === CONFIG.waveConfigs.length) {
     gameState = STATE_VICTORY;
+    hideAllOverlays();
     showOverlay('overlay-victory');
   } else {
     currentWave++;
     gameState = STATE_WAVE_WAIT;
     document.getElementById('wave-wait-text').textContent = `Wave ${currentWave} incoming!`;
     document.getElementById('btn-start-wave').textContent = `Start Wave ${currentWave}`;
+    hideAllOverlays();
     showOverlay('overlay-wave-wait');
     updateHUD();
   }
@@ -582,7 +584,8 @@ function checkAnswer() {
     fireUpgradeTier = 0;
     pendingGunIndex = -1;
     gameState = STATE_WAVE_WAIT;
-    hideOverlay('overlay-question');
+    hideAllOverlays();
+    showOverlay('overlay-wave-wait');
     updateHUD();
     return;
   }
@@ -610,6 +613,10 @@ function resetGame() {
   muzzleFlashTimer = 0;
   defeatFlashTimer = 0;
   hideAllOverlays();
+  document.getElementById('wave-wait-text').textContent = 'Wave 1 incoming!';
+  document.getElementById('btn-start-wave').textContent = 'Start Wave 1';
+  document.getElementById('answer-input').value = '';
+  document.getElementById('question-error').classList.add('hidden');
   showOverlay('overlay-wave-wait');
   updateHUD();
   console.info('resetGame called');

@@ -164,7 +164,8 @@ PLAYING     — all zombies dead      → WAVE_WAIT (if wave<10) or VICTORY (if 
 PLAYING     — any zombie reaches    → DEFEAT (brief flash) → resetGame() → WAVE_WAIT
               player Y position
 WAVE_WAIT   — click "Unlock Gun"    → QUESTION (saves pendingGunIndex; coins NOT deducted yet)
-QUESTION    — correct answer        → WAVE_WAIT (gun unlocked, coins deducted, tier reset)
+QUESTION    — correct answer        → WAVE_WAIT (gun unlocked, coins deducted, tier reset,
+                                      overlay-question hidden, overlay-wave-wait shown)
 QUESTION    — wrong answer          → stays QUESTION (shows error; coins NOT consumed)
               *** update() runs NO logic in STATE_QUESTION — world is fully paused ***
 VICTORY     — terminal; only page refresh resets
@@ -173,6 +174,8 @@ VICTORY     — terminal; only page refresh resets
 **Gun unlock flow — explicit:**
 - Fire rate upgrades: cost coins only. No question required.
 - Gun unlocks: require BOTH sufficient coins AND a correct answer. Coins are deducted ONLY after a correct answer. A wrong answer leaves coins untouched and keeps the question overlay open.
+
+**No-freeze guarantee:** Whenever `gameState === STATE_WAVE_WAIT`, `overlay-wave-wait` MUST be visible and its "Start Wave N" button must be reachable. No state transition may leave the game in `STATE_WAVE_WAIT` without showing this overlay. The question overlay flow is the primary risk: `triggerGunUnlock()` hides all overlays before showing `overlay-question`, so `checkAnswer()` on success MUST explicitly call `showOverlay('overlay-wave-wait')` — not just hide the question overlay.
 
 ---
 
@@ -669,17 +672,20 @@ function triggerGunUnlock() {
 
 ### On correct answer (inside `checkAnswer()`)
 
-Coins are deducted only here, after the answer is confirmed correct:
+Coins are deducted only here, after the answer is confirmed correct. The exact post-success sequence — **all steps are mandatory, in this order:**
 
 ```javascript
-coins -= GUN_UNLOCK_COSTS[pendingGunIndex]; // deduct on success only
-currentGun = pendingGunIndex;
-fireUpgradeTier = 0;
-pendingGunIndex = -1;
-gameState = STATE_WAVE_WAIT;
-hideOverlay('overlay-question');
-updateHUD();
+coins -= GUN_UNLOCK_COSTS[pendingGunIndex]; // 1. deduct coins (success only)
+currentGun = pendingGunIndex;               // 2. update gun index
+fireUpgradeTier = 0;                        // 3. reset fire tier for the new gun
+pendingGunIndex = -1;                       // 4. clear pending unlock state
+gameState = STATE_WAVE_WAIT;                // 5. set correct next state
+hideAllOverlays();                          // 6. dismiss all overlays (defensive)
+showOverlay('overlay-wave-wait');           // 7. REQUIRED — restore wave-wait screen
+updateHUD();                                // 8. refresh HUD
 ```
+
+**Step 7 is critical.** `triggerGunUnlock()` calls `hideAllOverlays()` before showing `overlay-question`, which hides `overlay-wave-wait`. If step 7 is omitted, the game enters `STATE_WAVE_WAIT` with no visible overlay and no "Start Wave" button reachable — the game appears frozen even though the loop is still running. Using `hideAllOverlays()` in step 6 (rather than `hideOverlay('overlay-question')`) is defensive — it clears any stale overlay before reshowing the correct one.
 
 Gun 3 is the final gun. `btn-gun-unlock` text changes to "Max Gun" and stays disabled when `currentGun >= 2`.
 
