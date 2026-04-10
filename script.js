@@ -38,6 +38,7 @@ const CONFIG = {
     laneLerpFactor: 0.015,
   },
   bullet: {
+    damage: 1,
     width: 4,
     height: 10,
     trailHeight: 8,
@@ -74,6 +75,7 @@ const CONFIG = {
     tankLeftLegXOffset: 4,
     tankRightLegXOffset: 16,
     shakeAmount: 2,
+    hitFlashDuration: 100,
   },
   guns: [
     { name: 'Pistol', baseInterval: 700, upgradeIntervals: [500, 350, 200] },
@@ -306,7 +308,43 @@ function update(dt, timestamp) {
     }
   }
 
+  for (const bullet of bullets) {
+    for (const zombie of zombies) {
+      if (
+        bullet.lane === zombie.lane &&
+        bullet.y <= zombie.y + zombie.height &&
+        bullet.y + CONFIG.bullet.height >= zombie.y &&
+        !zombie.dead &&
+        !bullet.dead
+      ) {
+        zombie.hp -= CONFIG.bullet.damage;
+        zombie.flashTimer = CONFIG.zombieVisuals.hitFlashDuration;
+        zombie.shakeOffset = {
+          x: randomRange(-CONFIG.zombieVisuals.shakeAmount, CONFIG.zombieVisuals.shakeAmount),
+          y: randomRange(-CONFIG.zombieVisuals.shakeAmount, CONFIG.zombieVisuals.shakeAmount),
+        };
+        bullet.dead = true;
+        playHitSound();
+
+        if (zombie.hp <= 0) {
+          zombie.dead = true;
+          coins += zombie.coinReward;
+          playDeathSound();
+          updateHUD();
+        }
+      }
+    }
+  }
+
+  for (const zombie of zombies) {
+    if (!zombie.dead && zombie.y + zombie.height >= CONFIG.canvas.playerY) {
+      enterDefeat();
+      return;
+    }
+  }
+
   bullets = bullets.filter((bullet) => !bullet.dead);
+  zombies = zombies.filter((zombie) => !zombie.dead);
 }
 
 function render(dt) {
@@ -478,6 +516,7 @@ function endWave() {
 
 function enterDefeat() {
   gameState = STATE_DEFEAT;
+  defeatFlashTimer = 300;
   hideAllOverlays();
   showOverlay('overlay-defeat');
   updateHUD();
@@ -675,6 +714,42 @@ function playShotSound() {
   source.connect(gain);
   gain.connect(audioCtx.destination);
   source.start();
+}
+
+function playHitSound() {
+  ensureAudio();
+
+  const oscillator = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  oscillator.type = 'square';
+  oscillator.frequency.setValueAtTime(180, audioCtx.currentTime);
+  oscillator.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.06);
+  gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.06);
+
+  oscillator.connect(gain);
+  gain.connect(audioCtx.destination);
+  oscillator.start();
+  oscillator.stop(audioCtx.currentTime + 0.06);
+}
+
+function playDeathSound() {
+  ensureAudio();
+
+  const oscillator = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  oscillator.type = 'sawtooth';
+  oscillator.frequency.setValueAtTime(220, audioCtx.currentTime);
+  oscillator.frequency.exponentialRampToValueAtTime(55, audioCtx.currentTime + 0.18);
+  gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+
+  oscillator.connect(gain);
+  gain.connect(audioCtx.destination);
+  oscillator.start();
+  oscillator.stop(audioCtx.currentTime + 0.18);
 }
 
 document.addEventListener('DOMContentLoaded', init);
