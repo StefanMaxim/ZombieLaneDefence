@@ -78,9 +78,9 @@ const CONFIG = {
     hitFlashDuration: 100,
   },
   guns: [
-    { name: 'Pistol', baseInterval: 700, upgradeIntervals: [500, 350, 200] },
-    { name: 'SMG', baseInterval: 180, upgradeIntervals: [140, 100, 70] },
-    { name: 'Railgun', baseInterval: 60, upgradeIntervals: [45, 32, 20] },
+    { name: 'Pistol', intervals: [560, 470, 390, 320] },
+    { name: 'SMG', intervals: [290, 245, 210, 180] },
+    { name: 'Railgun', intervals: [165, 145, 128, 112] },
   ],
   fireUpgradeCosts: [8, 14, 22],
   gunUnlockCosts: [0, 25, 40],
@@ -95,17 +95,78 @@ const CONFIG = {
       answer: 'central processing unit',
     },
   ],
+  // ─── PER-WAVE DIFFICULTY ────────────────────────────────────────────────────
+  // Each entry controls one wave. Safe fields to tweak first:
+  //   spawnInterval        — ms between spawns; raise to ease, lower to pressure
+  //   zombieSpeedMultiplier — multiplies zombieSpeed for this wave (1.0 = normal)
+  //   grunts / maulers     — enemy counts; maulers add far more HP pressure than grunts
+  // Pacing/structure fields (change carefully):
+  //   bossFinale           — victory triggers on Tank death (Wave 10 only)
+  //   tankSpawnsLast       — Tank spawns after all escorts when true (default true)
+  // Documentation fields (no effect on gameplay):
+  //   label, notes
   waveConfigs: [
-    { grunts: 8, maulers: 0, tanks: 0, spawnInterval: 1950 },
-    { grunts: 6, maulers: 1, tanks: 0, spawnInterval: 1750 },
-    { grunts: 10, maulers: 4, tanks: 0, spawnInterval: 1450 },
-    { grunts: 10, maulers: 1, tanks: 0, spawnInterval: 1400 },
-    { grunts: 8, maulers: 2, tanks: 0, spawnInterval: 1250 },
-    { grunts: 8, maulers: 4, tanks: 0, spawnInterval: 1150 },
-    { grunts: 6, maulers: 2, tanks: 0, spawnInterval: 1100 },
-    { grunts: 8, maulers: 2, tanks: 0, spawnInterval: 1000 },
-    { grunts: 10, maulers: 2, tanks: 0, spawnInterval: 900 },
-    { grunts: 4, maulers: 2, tanks: 1, spawnInterval: 950, bossFinale: true },
+    {
+      label: 'Wave 1',
+      grunts: 5, maulers: 0, tanks: 0,
+      spawnInterval: 1800, zombieSpeedMultiplier: 1.0,
+      notes: 'Intro wave — grunt-only, gentle pacing',
+    },
+    {
+      label: 'Wave 2',
+      grunts: 7, maulers: 0, tanks: 0,
+      spawnInterval: 1600, zombieSpeedMultiplier: 1.0,
+      notes: 'Grunt wave; save coins for Pistol T1 after this',
+    },
+    {
+      label: 'Wave 3',
+      grunts: 12, maulers: 1, tanks: 0,
+      spawnInterval: 2200, zombieSpeedMultiplier: 1.0,
+      notes: 'Mauler intro — slow interval compensates for high HP per kill',
+    },
+    {
+      label: 'Wave 4',
+      grunts: 4, maulers: 2, tanks: 0,
+      spawnInterval: 1380, zombieSpeedMultiplier: 1.0,
+      notes: 'SMG block begins; buy SMG T1 after this wave',
+    },
+    {
+      label: 'Wave 5',
+      grunts: 3, maulers: 3, tanks: 0,
+      spawnInterval: 1420, zombieSpeedMultiplier: 1.0,
+      notes: 'Mixed maulers; buy SMG T2 after this wave',
+    },
+    {
+      label: 'Wave 6',
+      grunts: 3, maulers: 4, tanks: 0,
+      spawnInterval: 1280, zombieSpeedMultiplier: 1.0,
+      notes: 'Mauler-heavy; buy SMG T3 + Railgun after this wave',
+    },
+    {
+      label: 'Wave 7',
+      grunts: 3, maulers: 5, tanks: 0,
+      spawnInterval: 1030, zombieSpeedMultiplier: 1.0,
+      notes: 'Endgame ramp begins; buy Rail T1 after this wave',
+    },
+    {
+      label: 'Wave 8',
+      grunts: 5, maulers: 6, tanks: 0,
+      spawnInterval: 810, zombieSpeedMultiplier: 1.0,
+      notes: 'Dense spawn; buy Rail T2 + T3 after this wave — gun maxed',
+    },
+    {
+      label: 'Wave 9',
+      grunts: 5, maulers: 8, tanks: 0,
+      spawnInterval: 660, zombieSpeedMultiplier: 1.0,
+      notes: 'Peak mauler pressure before boss; no upgrades left to buy',
+    },
+    {
+      label: 'Wave 10 — Boss',
+      grunts: 2, maulers: 0, tanks: 1,
+      spawnInterval: 950, zombieSpeedMultiplier: 1.0,
+      bossFinale: true, tankSpawnsLast: true,
+      notes: 'Staged boss finale. Grunts spawn first, Tank arrives last. Victory on Tank death.',
+    },
   ],
   zombieTypes: {
     grunt: {
@@ -151,8 +212,11 @@ const CONFIG = {
       armThickness: 10,
     },
   },
-  zombieSpeed: 80,
-  bulletSpeed: 420,
+  // ─── GLOBAL TUNING KNOBS ────────────────────────────────────────────────────
+  // These affect every wave. Change them when you want to shift the whole game.
+  // Per-wave speed variation: use zombieSpeedMultiplier in each waveConfigs entry instead.
+  zombieSpeed: 80,   // base pixels/second for all zombies
+  bulletSpeed: 420,  // pixels/second
 };
 
 const STATE_TITLE = 'STATE_TITLE';
@@ -284,6 +348,9 @@ function gameLoop(timestamp) {
 function update(dt, timestamp) {
   if (gameState !== STATE_PLAYING) return;
 
+  const waveConfig = CONFIG.waveConfigs[currentWave - 1];
+  const speedMult = waveConfig.zombieSpeedMultiplier ?? 1;
+
   const elapsed = performance.now() - waveStartTime;
   while (spawnQueue.length > 0 && spawnQueue[0].spawnAt <= elapsed) {
     const entry = spawnQueue.shift();
@@ -295,7 +362,7 @@ function update(dt, timestamp) {
   }
 
   for (const zombie of zombies) {
-    zombie.y += CONFIG.zombieSpeed * (dt / 1000);
+    zombie.y += CONFIG.zombieSpeed * speedMult * (dt / 1000);
     zombie.bobPhase += dt * CONFIG.zombieVisuals.bobRate;
     zombie.opacity = Math.min(1, zombie.opacity + dt * CONFIG.zombieVisuals.spawnFadeRate);
     zombie.flashTimer = Math.max(0, zombie.flashTimer - dt);
@@ -347,7 +414,6 @@ function update(dt, timestamp) {
         playHitSound();
 
         if (zombie.hp <= 0) {
-          const waveConfig = CONFIG.waveConfigs[currentWave - 1];
           zombie.dead = true;
           coins += zombie.coinReward;
           playDeathSound();
@@ -768,12 +834,24 @@ function buildSpawnQueue(waveIndex) {
   for (let i = 0; i < waveConfig.maulers; i++) types.push('mauler');
   for (let i = 0; i < waveConfig.tanks; i++) tanks.push('tank');
 
+  // Fisher-Yates shuffle non-tank types
   for (let i = types.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [types[i], types[j]] = [types[j], types[i]];
   }
 
-  const orderedTypes = [...types, ...tanks];
+  // tankSpawnsLast defaults to true when the field is absent
+  let orderedTypes;
+  if (waveConfig.tankSpawnsLast === false) {
+    // merge tanks into the shuffled pool and re-shuffle together
+    orderedTypes = [...types, ...tanks];
+    for (let i = orderedTypes.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [orderedTypes[i], orderedTypes[j]] = [orderedTypes[j], orderedTypes[i]];
+    }
+  } else {
+    orderedTypes = [...types, ...tanks]; // tanks spawn after all others (default)
+  }
 
   return orderedTypes.map((type, index) => ({
     type,
@@ -787,8 +865,7 @@ function randomRange(min, max) {
 }
 
 function fireInterval() {
-  if (fireUpgradeTier === 0) return CONFIG.guns[currentGun].baseInterval;
-  return CONFIG.guns[currentGun].upgradeIntervals[fireUpgradeTier - 1];
+  return CONFIG.guns[currentGun].intervals[fireUpgradeTier];
 }
 
 function ensureAudio() {

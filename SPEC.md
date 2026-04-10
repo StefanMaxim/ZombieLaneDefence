@@ -26,14 +26,16 @@ The 10-wave game is structured in **3-wave blocks per gun**. This is the intende
 
 | Block | Waves | Goal |
 |-------|-------|------|
-| Gun 1 block | 1–3 | Earn enough to fund all 3 fire-rate upgrades for Gun 1 (44 coins total) + unlock Gun 2 (25 coins) |
-| Gun 2 block | 4–6 | Earn enough to fund all 3 fire-rate upgrades for Gun 2 (44 coins total) + unlock Gun 3 (40 coins) |
-| Gun 3 block | 7–9 | Earn enough to fund all 3 fire-rate upgrades for Gun 3 (44 coins total); Waves 7–9 are the true endgame ramp |
-| Victory wave | 10   | Boss finale — Tank spawns last; victory triggers immediately on Tank death |
+| Gun 1 block | 1–3 | Earn to buy Pistol T1 (8c) + unlock Gun 2 (25c); total needed 33c; yields ~34c |
+| Gun 2 block | 4–6 | Earn to buy SMG T1+T2+T3 (44c) + unlock Gun 3 (40c); total needed 84c; yields ~100c |
+| Gun 3 block | 7–9 | Earn to buy Rail T1+T2+T3 (44c); total needed 44c; yields ~203c; upgrades maxed after W8 |
+| Victory wave | 10   | Boss finale — all upgrades already purchased before this wave |
 
-**Economy per block:** Waves 1–3 yield ~74 coins cumulative. Waves 4–6 yield ~96 coins. Waves 7–9 yield ~84 coins. Wave 10 yields ~74 coins.
+**Economy per block:** Waves 1–3 yield ~34c. Waves 4–6 yield ~100c. Waves 7–9 yield ~203c. Wave 10 yields ~52c.
 
-The progression is predictable: a player who kills all zombies in every wave will always have enough coins to unlock all upgrades on schedule.
+**Note on Block 1:** Only Pistol T1 (not T2/T3) is bought before switching to Gun 2. Fire tier resets on gun switch, so Pistol T2+T3 are wasted investment. With 1c remaining after the Gun 2 purchase, there is no opportunity to buy them anyway. This is intentional — the player's DPS growth comes from unlocking new guns, not from maxing each gun before switching.
+
+The progression is predictable: a player who kills most zombies in every wave will always have enough coins to unlock all upgrades on schedule.
 
 ### Balance Philosophy
 
@@ -49,6 +51,9 @@ The progression is predictable: a player who kills all zombies in every wave wil
 - In the default `bossFinale: true` configuration, **victory triggers immediately on Tank death** — remaining escort enemies become irrelevant; there is no anticlimactic cleanup phase
 - Difficulty increase comes from both stronger enemies and incrementally faster spawn pacing — no sudden unfair spikes
 - Balance should support successful completion in a short classroom or presentation setting
+- Wave difficulty is balanced by **HP pressure** (total enemy HP relative to spawn rate), not just coin rewards. As player DPS grows with upgrades, wave HP pressure grows proportionally — keeping the challenge consistent
+- The core balance metric: `player DPS = 1000 / fireIntervalMs`. Wave pressure = total wave HP / spawn window (seconds). Constant difficulty ≈ pressure/DPS ratio ≈ 1.35 across all waves
+- **All difficulty settings are manually tunable** from `CONFIG.waveConfigs` in `script.js`. Each wave entry is self-documenting via `label` and `notes` fields. No code knowledge is required to adjust `spawnInterval`, `zombieSpeedMultiplier`, or enemy counts. `README.md` contains a "How to Tweak Difficulty" section that explains all fields in plain language.
 
 ---
 
@@ -600,24 +605,54 @@ if (spawnQueue.length === 0) allSpawned = true;
 
 ## 6. Upgrade System
 
+### Combat Balance Framework
+
+The game targets **constant perceived difficulty**: as the player's fire rate upgrades, wave HP pressure scales proportionally so that each wave requires similar player effort.
+
+```
+Core metric:
+  player DPS     = 1000 / fireIntervalMs        (bullets per second × 1 damage per bullet)
+  wave pressure  = totalWaveHP / spawnWindowSeconds
+  spawnWindow    = (N - 1) × spawnIntervalMs / 1000   (seconds from first to last spawn)
+
+Constant difficulty target: pressure / DPS ≈ 1.35 across all waves.
+The 1.35 factor means the player must actively manage lanes — they cannot stand
+in one lane and shoot; they need to prioritize and reposition.
+
+DPS progression (default config):
+  Pistol T0:   1000/560  ≈ 1.79 DPS     Pistol T1:   1000/470  ≈ 2.13 DPS
+  SMG T0:      1000/290  ≈ 3.45 DPS     SMG T2:      1000/210  ≈ 4.76 DPS
+  Railgun T0:  1000/165  ≈ 6.06 DPS     Railgun T3:  1000/112  ≈ 8.93 DPS
+
+Tuning guidance:
+  - To tune a wave: set spawnInterval = totalHP / ((N-1) × DPS × 1.35) × 1000
+  - Maulers raise avg HP per zombie → longer intervals required to maintain ratio
+  - Pure grunt waves can use shorter intervals
+  - Economy checkpoints (Waves 3, 6, 9) are progression constraints, not balancing tools;
+    difficulty is balanced by HP pressure independently of coin rewards
+```
+
 ### CONFIG block (top of script.js — easy to edit)
 
 > **All values below are defaults.** Change them to rebalance the game without touching logic.
 
 ```javascript
 const GUNS = [
-  { name: 'Pistol',  baseInterval: 700,  upgradeIntervals: [500, 350, 200] },
-  { name: 'SMG',     baseInterval: 180,  upgradeIntervals: [140, 100,  70] },
-  { name: 'Railgun', baseInterval: 60,   upgradeIntervals: [ 45,  32,  20] },
+  { name: 'Pistol',  intervals: [560, 470, 390, 320] },
+  { name: 'SMG',     intervals: [290, 245, 210, 180] },
+  { name: 'Railgun', intervals: [165, 145, 128, 112] },
 ];
-// upgradeIntervals[0] = tier 1, [1] = tier 2, [2] = tier 3 (milliseconds between shots)
+// intervals[0] = base (tier 0), intervals[1..3] = fire-rate upgrade tiers 1–3 (ms between shots)
+// Lower ms = faster fire. Pistol T0 → Railgun T3 is a 5× DPS increase (1.79 → 8.93 DPS)
+// Tier steps are wider than before — each upgrade is perceptibly faster; gun-unlock jumps are
+// still controlled (maxed Pistol T3 = 320ms; base SMG T0 = 290ms — a modest, non-trivial step)
 
 // Costs are tuned to the 3-wave block progression model (see Design Overview)
 const FIRE_UPGRADE_COSTS = [8, 14, 22];   // Tier 1, 2, 3 — total 44 coins per gun block
 const GUN_UNLOCK_COSTS   = [0, 25, 40];   // Gun 0 free; Gun 1 = 25c; Gun 2 = 40c
 ```
 
-**Upgrade cost rationale:** Block 1 (waves 1–3) yields ~74 coins; spending 44c on fire-rate upgrades + 25c on Gun 2 = 69c leaves a 5-coin buffer. Block 2 (waves 4–6) yields ~96 coins; spending 44c + 40c on Gun 3 = 84c leaves a 12-coin buffer. Block 3 (waves 7–9) yields ~84 coins; spending 44c on fire-rate upgrades leaves a 40-coin buffer (no gun unlock in this block). The player is never starved if they kill the majority of zombies.
+**Upgrade cost rationale:** Block 1 (waves 1–3) yields ~34c; spending 8c on Pistol T1 + 25c on Gun 2 = 33c leaves a 1c buffer. Pistol T2+T3 are intentionally skipped — fire tier resets on gun switch. Block 2 (waves 4–6) yields ~100c; spending 44c on SMG fire upgrades + 40c on Gun 3 = 84c leaves a 16c buffer. Block 3 (waves 7–9) yields ~203c; spending 44c on Rail upgrades leaves a large buffer — all upgrades maxed after W8, before W9. The player is never starved if they kill the majority of zombies.
 
 **Gun 3 power expectation:** Gun 3 (Railgun) with all 3 fire-rate upgrades must feel **dramatically stronger** than the starting Pistol. The fully upgraded Railgun (Gun 3 Tier 3) is the payoff for the entire progression arc — it should feel "amazing" by comparison to earlier weapons and must make the Wave 10 Tank fight realistically winnable. The final weapon path is rewarding, not cosmetic; it justifies the question-gated unlock and the late-game pacing. Exact DPS numbers are tunable via CONFIG, but the design intent is non-negotiable: Gun 3 Tier 3 is the climax weapon.
 
@@ -625,8 +660,8 @@ const GUN_UNLOCK_COSTS   = [0, 25, 40];   // Gun 0 free; Gun 1 = 25c; Gun 2 = 40
 
 ```javascript
 function fireInterval() {
-  if (fireUpgradeTier === 0) return GUNS[currentGun].baseInterval;
-  return GUNS[currentGun].upgradeIntervals[fireUpgradeTier - 1];
+  return GUNS[currentGun].intervals[fireUpgradeTier];
+  // fireUpgradeTier 0 = base; 1/2/3 = upgrade tiers. No branching needed with array format.
 }
 ```
 
@@ -766,58 +801,86 @@ Show `.question-error` with text "Incorrect — please try again." Do not close 
 > The full game (10 waves) must complete in **≤ 5 minutes**.
 
 Supporting constraints:
-- Each wave has its own **`spawnInterval`** (ms between zombie spawns) defined in `WAVE_CONFIGS` — there is no global `SPAWN_INTERVAL`. Early waves use intentionally slow pacing (1950 ms in Wave 1, 1750 ms in Wave 2) to give reaction time; pacing ramps down to 950 ms by Wave 10
-- Total enemies across all 10 waves: **~99** (see composition table below)
+- Each wave has its own **`spawnInterval`** (ms between zombie spawns) defined in `WAVE_CONFIGS` — there is no global `SPAWN_INTERVAL`. Intervals are chosen so that `pressure / DPS ≈ 1.35` (see Combat Balance Framework in Section 6); early waves with maulers use longer intervals to compensate for their high per-zombie HP
+- Total enemies across all 10 waves: **~80** (see composition table below)
 - Tanks appear **only in Wave 10** by default — no HP sponges in early/mid game
 - Player should not feel stuck waiting for zombies to spawn or die
-- Early waves are intentionally slightly forgiving; Waves 1-2 in particular should give the player a little extra breathing room before the game settles into its main pacing curve
 
 ### WAVE_CONFIGS (top of script.js — easy to edit)
 
-> **All values below are defaults.** Adjust counts to tune difficulty, but maintain the coin targets in the table below.
+> **All values below are defaults.** When adjusting counts, recalculate `pressure / DPS` to maintain the ≈1.35 ratio (see Section 6 Combat Balance Framework).
 
 ```javascript
 const WAVE_CONFIGS = [
-  { grunts:  8, maulers: 0, tanks: 0, spawnInterval: 1950 },                          // W1  —  8 enemies
-  { grunts:  6, maulers: 1, tanks: 0, spawnInterval: 1750 },                          // W2  —  7 enemies
-  { grunts: 10, maulers: 4, tanks: 0, spawnInterval: 1450 },                          // W3  — 14 enemies
-  { grunts: 10, maulers: 1, tanks: 0, spawnInterval: 1400 },                          // W4  — 11 enemies
-  { grunts:  8, maulers: 2, tanks: 0, spawnInterval: 1250 },                          // W5  — 10 enemies
-  { grunts:  8, maulers: 4, tanks: 0, spawnInterval: 1150 },                          // W6  — 12 enemies
-  { grunts:  6, maulers: 2, tanks: 0, spawnInterval: 1100 },                          // W7  —  8 enemies (ramp begins)
-  { grunts:  8, maulers: 2, tanks: 0, spawnInterval: 1000 },                          // W8  — 10 enemies
-  { grunts: 10, maulers: 2, tanks: 0, spawnInterval:  900 },                          // W9  — 12 enemies
-  { grunts:  4, maulers: 2, tanks: 1, spawnInterval:  950, bossFinale: true },        // W10 —  7 enemies (boss finale)
+  { grunts: 5, maulers: 0, tanks: 0, spawnInterval: 1800 },                        // W1  —  5 enemies, 15 HP
+  { grunts: 7, maulers: 0, tanks: 0, spawnInterval: 1600 },                        // W2  —  7 enemies, 21 HP
+  { grunts: 2, maulers: 2, tanks: 0, spawnInterval: 2200 },                        // W3  —  4 enemies, 26 HP (maulers introduced; longer interval)
+  { grunts: 4, maulers: 2, tanks: 0, spawnInterval: 1380 },                        // W4  —  6 enemies, 32 HP
+  { grunts: 3, maulers: 3, tanks: 0, spawnInterval: 1420 },                        // W5  —  6 enemies, 39 HP
+  { grunts: 3, maulers: 4, tanks: 0, spawnInterval: 1280 },                        // W6  —  7 enemies, 49 HP
+  { grunts: 3, maulers: 5, tanks: 0, spawnInterval: 1030 },                        // W7  —  8 enemies, 59 HP (ramp begins)
+  { grunts: 5, maulers: 6, tanks: 0, spawnInterval:  810 },                        // W8  — 11 enemies, 75 HP
+  { grunts: 5, maulers: 8, tanks: 0, spawnInterval:  660 },                        // W9  — 13 enemies, 95 HP
+  { grunts: 2, maulers: 0, tanks: 1, spawnInterval:  950, bossFinale: true },      // W10 —  3 enemies, 106 HP (boss finale)
 ];
-// Total enemies: ~99 — no global SPAWN_INTERVAL; each wave uses its own spawnInterval field
-// spawnInterval ramps from 1950 ms (Wave 1) down to 900 ms (Wave 9); Wave 10 uses 950 ms (escort + boss)
-// bossFinale: true on Wave 10 — victory triggers immediately on Tank death; escort enemies become irrelevant
+// Total enemies: ~80 — HP pressure scales with expected player DPS each wave (pressure/DPS ≈ 1.35)
+// W1–W2 keep original intervals; with stronger Pistol T0 DPS they are intentionally a touch easier
+// W3 is deliberately slow (2200ms) — mauler intro; player is still on Pistol T1
+// W4–W9 intervals reduced vs prior config to compensate for higher SMG/Railgun DPS; maintains ratio
+// bossFinale: true on Wave 10 — victory triggers immediately on Tank death; escort becomes irrelevant
+//
+// Each wave entry supports the following fields (all tunable without touching game logic):
+//   grunts, maulers, tanks        — enemy counts per type
+//   spawnInterval                  — ms between spawns (raise = easier, lower = harder)
+//   zombieSpeedMultiplier          — multiplies zombieSpeed for this wave; 1.0 = normal
+//   bossFinale                     — victory on Tank death (Wave 10 only)
+//   tankSpawnsLast                 — Tank spawns after all escorts when true (default true)
+//   label, notes                   — documentation only; no effect on gameplay
 
 const ZOMBIE_SPEED   = 80;   // pixels per second (default — tunable)
 const BULLET_SPEED   = 420;  // pixels per second (default — tunable)
 const PLAYER_Y       = 480;  // y-coordinate that triggers defeat when zombie reaches it
 ```
 
+### Wave HP Targets
+
+Compositions are designed to hit these total HP values. Deviations of ±2 HP are acceptable; larger deviations require rebalancing `spawnInterval`.
+
+| Wave | Target HP | Actual HP | Expected player DPS | Pressure/DPS (approx) |
+|------|-----------|-----------|---------------------|----------------------|
+| 1  | 15–16  | 15  | 1.79 (Pistol T0) | ~1.16 (intentionally easier) |
+| 2  | 19–21  | 21  | 1.79 (Pistol T0) | ~1.22 (intentionally easier) |
+| 3  | 25–27  | 26  | 2.13 (Pistol T1) | ~1.85 (mauler intro; above target by design) |
+| 4  | 31–33  | 32  | 3.45 (SMG T0)    | ~1.35 |
+| 5  | 39–41  | 39  | 4.08 (SMG T1)    | ~1.35 |
+| 6  | 48–50  | 49  | 4.76 (SMG T2)    | ~1.35 |
+| 7  | 58–60  | 59  | 6.06 (Railgun T0)| ~1.35 |
+| 8  | 74–76  | 75  | 6.90 (Rail T1)   | ~1.34 |
+| 9  | 93–95  | 95  | 8.93 (Rail T3)   | ~1.34 |
+| 10 | 105–110 | 106 | 8.93 (Rail T3)  | — (boss finale) |
+
 ### Wave Economy Table
 
-The following table shows the intended coin yield and cumulative economy for each wave. Compositions are designed to hit these targets with zombie values: Grunt = 1 coin, Mauler = 10 coins, Tank = 50 coins.
+*G = Grunt (1c/3HP), M = Mauler (10c/10HP), T = Tank (50c/100HP)*
 
-| Wave | Composition | Coins this wave | Cumulative (in block) | Upgrade milestone |
-|------|-------------|-----------------|----------------------|-------------------|
-| 1 | 8G | ~8 | ~8 | Buy Fire Tier 1 (8c) |
-| 2 | 6G + 1M | ~16 | ~24 | Buy Fire Tier 2 (14c) |
-| 3 | 10G + 4M | ~50 | ~74 | Buy Fire Tier 3 (22c) + Unlock Gun 2 (25c) |
-| 4 | 10G + 1M | ~20 | ~20 | Buy Fire Tier 1 (8c) |
-| 5 | 8G + 2M | ~28 | ~48 | Buy Fire Tier 2 (14c) |
-| 6 | 8G + 4M | ~48 | ~96 | Buy Fire Tier 3 (22c) + Unlock Gun 3 (40c) |
-| 7 | 6G + 2M | ~26 | ~26 | Buy Fire Tier 1 (8c) — endgame ramp begins |
-| 8 | 8G + 2M | ~28 | ~54 | Buy Fire Tier 2 (14c) |
-| 9 | 10G + 2M | ~30 | ~84 | Buy Fire Tier 3 (22c) — fully upgraded entering boss |
-| 10 | 4G + 2M + 1T | ~74 | — | Boss finale — victory triggers on Tank death |
+| Wave | Composition | Total HP | Coins | Milestone (buy after this wave) |
+|------|-------------|----------|-------|----------------------------------|
+| 1 | 5G | 15 | ~5 | (save; 12c after W2 → buy Pistol T1) |
+| 2 | 7G | 21 | ~7 | Buy Pistol T1 (8c) → 4c left |
+| 3 | 2G+2M | 26 | ~22 | Buy Gun 2 (25c) → 1c left; skip Pistol T2/T3 |
+| 4 | 4G+2M | 32 | ~24 | Buy SMG T1 (8c) → 17c left |
+| 5 | 3G+3M | 39 | ~33 | Buy SMG T2 (14c) → 36c left |
+| 6 | 3G+4M | 49 | ~43 | Buy SMG T3 (22c) + Gun 3 (40c) → 17c left |
+| 7 | 3G+5M | 59 | ~53 | Buy Rail T1 (8c) → 62c left |
+| 8 | 5G+6M | 75 | ~65 | Buy Rail T2 (14c) + Rail T3 (22c) → 91c left; **max gun** |
+| 9 | 5G+8M | 95 | ~85 | No upgrades remaining; coins accumulate |
+| 10 | 2G+1T | 106 | ~52 | Boss finale — victory on Tank death |
 
-*G = Grunt (1c), M = Mauler (10c), T = Tank (50c). Cumulative columns reset per gun block.*
-
-**Note:** Cumulative columns for waves 1–3, 4–6, and 7–9 are shown relative to the start of each block. The player enters each block at 0 spendable coins (having spent on the previous block's upgrades). Block 1 yields 74c vs 69c needed (5c buffer); Block 2 yields 96c vs 84c needed (12c buffer); Block 3 yields 84c vs 44c needed (40c buffer — no gun unlock in this block).
+**Economy notes:**
+- Block 1 yields ~34c; needs 33c (Pistol T1 + Gun 2) — 1c buffer
+- Block 2 yields ~100c; needs 84c (SMG T1+T2+T3 + Gun 3) — 16c buffer
+- Block 3 yields ~203c; needs 44c (Rail T1+T2+T3) — large buffer; upgrades complete after W8
+- Pistol T2/T3 intentionally never purchased: fire tier resets on gun switch; buying them delays Gun 2 with no lasting benefit
 
 ### Wave start (`startWave()`)
 
@@ -881,7 +944,7 @@ The Tank is not a routine enemy. It is the **culminating encounter** of the enti
 - The Tank appears by default **only in Wave 10** — it must not appear in any earlier wave
 - **Wave 10 is a staged boss finale.** A small escort of grunts and maulers spawns first (at 950 ms intervals), then the Tank spawns last. This staging ensures the Tank arrives as a climactic event, not buried mid-wave.
 - By Wave 10, the player who followed the intended progression will have Gun 3 fully upgraded — this must make the Tank fight feel **challenging but clearly achievable**, not impossible
-- The Tank's 100 HP justifies the late-game gun progression: a fully upgraded Railgun firing at 20 ms intervals shreds through it in a way that earlier weapons never could
+- The Tank's 100 HP justifies the late-game gun progression: a fully upgraded Railgun firing at 112 ms intervals shreds through it in a way that earlier weapons never could
 - The Tank makes Wave 10 feel **distinct** from all previous waves — it should be visually imposing, require sustained fire, and deliver a satisfying conclusion when defeated
 - **`bossFinale: true` means victory triggers on Tank death.** Once the Tank falls, the game ends — the escort enemies do not matter. This prevents the anticlimactic "cleanup" phase where the player mops up a few remaining grunts after the boss is already dead. The victory screen fires over whatever is still on-screen.
 - The Tank is the payoff, not a wall — the player's earned progression should make this fight feel earned and satisfying
@@ -1232,6 +1295,7 @@ Every function to implement in `script.js`, with its exact responsibility:
 | `playShotSound()` | Calls `ensureAudio()`; generates short white-noise burst via `AudioContext` buffer; plays immediately. |
 | `playHitSound()` | Calls `ensureAudio()`; generates descending square-wave click via oscillator; plays immediately. |
 | `playDeathSound()` | Calls `ensureAudio()`; generates descending sawtooth tone via oscillator; plays immediately. |
+| `fireInterval()` | Returns `CONFIG.guns[currentGun].intervals[fireUpgradeTier]`. Tier 0 = base rate; tiers 1–3 = upgrade rates. No branching needed — direct array index lookup. |
 | `laneCenter(lane)` | Pure helper: returns pixel x-center of the given lane. `lane * 200 + 100`. |
 | `showOverlay(id)` / `hideOverlay(id)` / `hideAllOverlays()` | DOM helpers to add/remove `.hidden` class on overlay divs. |
 

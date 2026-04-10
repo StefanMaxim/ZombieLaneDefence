@@ -58,64 +58,60 @@ gunQuestions: [
 
 Answers are matched case-insensitively after trimming whitespace.
 
-## Editing waves and pacing
+## How to Tweak Difficulty
 
-Wave composition and spawn pacing also live in the top-level `CONFIG` object in `script.js`.
+All wave and balance settings live in `script.js` inside the `CONFIG` object near the top of the file. There are two levels of tuning: **per-wave settings** and **global settings**.
 
-Edit:
+### Per-wave settings — `CONFIG.waveConfigs`
 
-- `CONFIG.waveConfigs`
+Each entry in the array controls one wave. The fields are:
 
-Each wave entry contains:
+| Field | What it does | To make the wave **easier** | To make the wave **harder** |
+|-------|-------------|-----------------------------|-----------------------------|
+| `grunts` | Number of grunt zombies (3 HP, 1 coin each) | Decrease | Increase |
+| `maulers` | Number of mauler zombies (10 HP, 10 coins each) | Decrease | Increase — maulers add far more HP pressure than grunts |
+| `tanks` | Number of tank zombies (100 HP, 50 coins each) | Keep at 0 except Wave 10 | — |
+| `spawnInterval` | Milliseconds between zombie spawns | Increase (e.g. 2000) | Decrease (e.g. 800) — more zombies visible at once |
+| `zombieSpeedMultiplier` | Multiplies the global `zombieSpeed` for this wave only | Decrease below 1.0 (e.g. 0.8) | Increase above 1.0 (e.g. 1.3) |
+| `bossFinale` | Victory triggers immediately when the Tank dies | — | — (pacing flag, not a difficulty lever) |
+| `tankSpawnsLast` | When `true`, Tank spawns after all escort enemies | — | Set `false` to shuffle Tank among the escort |
+| `label` | Short name for the wave — shown in comments only, no gameplay effect | — | — |
+| `notes` | Free-text note to yourself — no gameplay effect | — | — |
 
-- `grunts`
-- `maulers`
-- `tanks`
-- `spawnInterval`
+**Which fields to tweak first:**
 
-Example:
+1. `spawnInterval` — the safest and most predictable knob. Raising it gives more breathing room between spawns; lowering it creates pressure by stacking zombies on screen.
+2. `zombieSpeedMultiplier` — use values between 0.7 and 1.4. Below 0.7 makes zombies crawl; above 1.5 makes them hard to read visually.
+3. `grunts` / `maulers` counts — adding one mauler raises HP pressure roughly as much as adding three grunts.
 
-```js
-{ grunts: 8, maulers: 0, tanks: 0, spawnInterval: 1950 }
-```
+**Recommended manual balancing workflow:**
 
-Important balance rules from the spec:
+1. Play the wave once and note where you died or where it felt trivial.
+2. Zombies reached you too fast → increase `spawnInterval` or decrease `zombieSpeedMultiplier`.
+3. Wave felt trivial → decrease `spawnInterval` or swap a grunt for a mauler.
+4. Reload the browser (no build step needed) and replay from that wave.
+5. Repeat until the wave feels right.
 
-- Tank appears only in Wave 10 by default
-- Wave 10 uses `bossFinale: true` by default so the Tank is the climax, not the start of a cleanup phase
-- Early waves are intentionally slower and easier to read
-- Waves 7-9 are the real endgame ramp
-- Spawn pacing ramps down gradually across the run because each wave owns its own `spawnInterval`
+**Rules to preserve:**
 
-## Editing upgrades and balance
+- Keep tanks only in Wave 10. A tank in an earlier wave breaks the boss-finale pacing.
+- Keep `bossFinale: true` on Wave 10. Without it, the player must clean up escort enemies after the Tank dies — anticlimactic.
+- Waves 7–9 should feel meaningfully harder than Waves 4–6. Don't ease them too much.
 
-The main progression knobs are:
+### Global settings — also in `CONFIG`
 
-- `CONFIG.guns`
-- `CONFIG.fireUpgradeCosts`
-- `CONFIG.gunUnlockCosts`
-- `CONFIG.zombieTypes`
-- `CONFIG.zombieSpeed`
-- `CONFIG.bulletSpeed`
+These affect every wave at once:
 
-Relevant examples:
+| Setting | What it does |
+|---------|-------------|
+| `zombieSpeed` | Base zombie speed in pixels/second. `zombieSpeedMultiplier` in each wave entry multiplies this. |
+| `bulletSpeed` | How fast bullets travel up the screen. |
+| `guns[].intervals` | Fire-rate tables (ms between shots) for Pistol, SMG, Railgun. Lower = faster. |
+| `fireUpgradeCosts` | Coin costs for fire-rate tiers 1, 2, 3 (array of three numbers). |
+| `gunUnlockCosts` | Coin costs to unlock SMG and Railgun. |
+| `zombieTypes` | HP, coin reward, and sprite properties for `grunt`, `mauler`, `tank`. |
 
-```js
-fireUpgradeCosts: [8, 14, 22]
-gunUnlockCosts: [0, 25, 40]
-```
-
-`CONFIG.guns` controls the base fire interval and upgrade intervals for:
-
-- `Pistol`
-- `SMG`
-- `Railgun`
-
-`CONFIG.zombieTypes` controls HP, coin reward, and sprite dimensions/colors for:
-
-- `grunt`
-- `mauler`
-- `tank`
+To slow all zombies globally, lower `zombieSpeed`. For per-wave variation, leave `zombieSpeed` as-is and use `zombieSpeedMultiplier` in the individual wave entries instead.
 
 ## Project structure
 
