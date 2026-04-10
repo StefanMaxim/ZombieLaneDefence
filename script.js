@@ -557,16 +557,39 @@ function buyFireUpgrade() {
 function triggerGunUnlock() {
   if (!canUnlockGun()) return;
 
-  gameState = STATE_QUESTION;
   pendingGunIndex = currentGun + 1;
+  gameState = STATE_QUESTION;
+  document.getElementById('question-text').textContent = CONFIG.gunQuestions[pendingGunIndex].question;
+  document.getElementById('answer-input').value = '';
+  document.getElementById('question-error').classList.add('hidden');
   hideAllOverlays();
   showOverlay('overlay-question');
   updateHUD();
+  document.getElementById('answer-input').focus();
   console.info('triggerGunUnlock called');
 }
 
 function checkAnswer() {
-  console.info('checkAnswer called');
+  if (pendingGunIndex < 0) return;
+
+  const answerInput = document.getElementById('answer-input');
+  const errorEl = document.getElementById('question-error');
+  const expectedAnswer = CONFIG.gunQuestions[pendingGunIndex].answer;
+
+  if (normalizeAnswer(answerInput.value) === normalizeAnswer(expectedAnswer)) {
+    coins -= CONFIG.gunUnlockCosts[pendingGunIndex];
+    currentGun = pendingGunIndex;
+    fireUpgradeTier = 0;
+    pendingGunIndex = -1;
+    gameState = STATE_WAVE_WAIT;
+    hideOverlay('overlay-question');
+    updateHUD();
+    return;
+  }
+
+  errorEl.textContent = 'Incorrect — please try again.';
+  errorEl.classList.remove('hidden');
+  answerInput.focus();
 }
 
 function resetGame() {
@@ -643,6 +666,10 @@ function canBuyFireRate() {
 function canUnlockGun() {
   return currentGun < CONFIG.guns.length - 1 &&
     coins >= CONFIG.gunUnlockCosts[currentGun + 1];
+}
+
+function normalizeAnswer(value) {
+  return value.trim().toLowerCase();
 }
 
 function showOverlay(id) {
