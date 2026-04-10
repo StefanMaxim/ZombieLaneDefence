@@ -9,6 +9,33 @@ const CONFIG = {
     laneWidth: 200,
     playerY: 480,
     zombieSpawnY: -60,
+    pavementY: 520,
+    backgroundColor: '#1a1a1a',
+    laneColors: ['#202020', '#181818'],
+    laneHighlightColor: 'rgba(0, 170, 255, 0.07)',
+    dividerColor: '#444',
+    pavementColor: '#555',
+  },
+  player: {
+    bodyWidth: 30,
+    bodyHeight: 40,
+    bodyColor: '#00aaff',
+    gunWidth: 6,
+    gunHeight: 16,
+    gunY: 466,
+    gunColor: '#ffffff',
+    eyeWidth: 5,
+    eyeHeight: 5,
+    eyeY: 485,
+    leftEyeXOffset: -8,
+    rightEyeXOffset: 3,
+    eyeColor: '#002244',
+    muzzleFlashY: 464,
+    muzzleFlashOuterRadius: 5,
+    muzzleFlashInnerRadius: 2.5,
+    muzzleFlashOuterColor: '#ffffaa',
+    muzzleFlashInnerColor: '#ffffff',
+    laneLerpFactor: 0.015,
   },
   guns: [
     { name: 'Pistol', baseInterval: 700, upgradeIntervals: [500, 350, 200] },
@@ -125,7 +152,7 @@ function init() {
 
   initEventListeners();
   updateHUD();
-  renderScaffold();
+  render(0);
   lastTimestamp = performance.now();
   animFrameId = requestAnimationFrame(gameLoop);
 
@@ -147,22 +174,22 @@ function initEventListeners() {
   document.addEventListener('keydown', handleMovement);
 }
 
-function renderScaffold() {
+function drawBackground() {
   if (!ctx) return;
 
-  ctx.fillStyle = '#1a1a1a';
+  ctx.fillStyle = CONFIG.canvas.backgroundColor;
   ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
 
   for (let i = 0; i < CONFIG.canvas.laneCount; i++) {
-    ctx.fillStyle = i % 2 === 0 ? '#202020' : '#181818';
+    ctx.fillStyle = CONFIG.canvas.laneColors[i % CONFIG.canvas.laneColors.length];
     ctx.fillRect(i * CONFIG.canvas.laneWidth, 0, CONFIG.canvas.laneWidth, CONFIG.canvas.height);
   }
 
-  ctx.fillStyle = 'rgba(0, 170, 255, 0.07)';
+  ctx.fillStyle = CONFIG.canvas.laneHighlightColor;
   ctx.fillRect(playerLane * CONFIG.canvas.laneWidth, 0, CONFIG.canvas.laneWidth, CONFIG.canvas.height);
 
   ctx.setLineDash([8, 6]);
-  ctx.strokeStyle = '#444';
+  ctx.strokeStyle = CONFIG.canvas.dividerColor;
   ctx.lineWidth = 2;
   for (let lane = 1; lane < CONFIG.canvas.laneCount; lane++) {
     const x = lane * CONFIG.canvas.laneWidth;
@@ -173,10 +200,10 @@ function renderScaffold() {
   }
   ctx.setLineDash([]);
 
-  ctx.strokeStyle = '#555';
+  ctx.strokeStyle = CONFIG.canvas.pavementColor;
   ctx.beginPath();
-  ctx.moveTo(0, 520);
-  ctx.lineTo(CONFIG.canvas.width, 520);
+  ctx.moveTo(0, CONFIG.canvas.pavementY);
+  ctx.lineTo(CONFIG.canvas.width, CONFIG.canvas.pavementY);
   ctx.stroke();
 }
 
@@ -188,6 +215,9 @@ function gameLoop(timestamp) {
     update(dt, timestamp);
   }
 
+  muzzleFlashTimer = Math.max(0, muzzleFlashTimer - dt);
+  defeatFlashTimer = Math.max(0, defeatFlashTimer - dt);
+
   render(dt);
   animFrameId = requestAnimationFrame(gameLoop);
 }
@@ -198,8 +228,38 @@ function update(dt, timestamp) {
 }
 
 function render(dt) {
-  void dt;
-  renderScaffold();
+  drawBackground();
+  drawPlayer(ctx, dt);
+}
+
+function drawPlayer(ctx, dt) {
+  const targetX = laneCenter(playerLane);
+  playerDisplayX += (targetX - playerDisplayX) * Math.min(1, dt * CONFIG.player.laneLerpFactor);
+  const cx = playerDisplayX;
+  const playerTop = CONFIG.canvas.playerY;
+  const halfBodyWidth = CONFIG.player.bodyWidth / 2;
+
+  ctx.fillStyle = CONFIG.player.bodyColor;
+  ctx.fillRect(cx - halfBodyWidth, playerTop, CONFIG.player.bodyWidth, CONFIG.player.bodyHeight);
+
+  ctx.fillStyle = CONFIG.player.gunColor;
+  ctx.fillRect(cx - CONFIG.player.gunWidth / 2, CONFIG.player.gunY, CONFIG.player.gunWidth, CONFIG.player.gunHeight);
+
+  ctx.fillStyle = CONFIG.player.eyeColor;
+  ctx.fillRect(cx + CONFIG.player.leftEyeXOffset, CONFIG.player.eyeY, CONFIG.player.eyeWidth, CONFIG.player.eyeHeight);
+  ctx.fillRect(cx + CONFIG.player.rightEyeXOffset, CONFIG.player.eyeY, CONFIG.player.eyeWidth, CONFIG.player.eyeHeight);
+
+  if (muzzleFlashTimer > 0) {
+    ctx.fillStyle = CONFIG.player.muzzleFlashOuterColor;
+    ctx.beginPath();
+    ctx.arc(cx, CONFIG.player.muzzleFlashY, CONFIG.player.muzzleFlashOuterRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = CONFIG.player.muzzleFlashInnerColor;
+    ctx.beginPath();
+    ctx.arc(cx, CONFIG.player.muzzleFlashY, CONFIG.player.muzzleFlashInnerRadius, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 function startGame() {
