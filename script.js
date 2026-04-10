@@ -37,6 +37,44 @@ const CONFIG = {
     muzzleFlashInnerColor: '#ffffff',
     laneLerpFactor: 0.015,
   },
+  bullet: {
+    width: 4,
+    height: 10,
+    trailHeight: 8,
+    trailOffsetY: 10,
+    spawnY: 454,
+    trailColor: 'rgba(255, 255, 100, 0.35)',
+    leadColor: '#ffff44',
+    muzzleFlashDuration: 80,
+  },
+  zombieVisuals: {
+    spawnFadeRate: 0.003,
+    bobRate: 0.003,
+    bobAmplitude: 2,
+    hitFlashColor: '#ffffff',
+    outlineColor: '#000000',
+    healthBackColor: '#333333',
+    healthHighColor: '#00cc44',
+    healthMidColor: '#eeaa00',
+    healthLowColor: '#cc2222',
+    healthBarHeight: 4,
+    healthBarExtraWidth: 8,
+    healthBarYOffset: 8,
+    healthBarHeadScale: 1.4,
+    healthHighThreshold: 0.5,
+    healthMidThreshold: 0.25,
+    headRadiusScale: 0.38,
+    headYOffsetScale: 0.6,
+    eyeYOffsetScale: 0.15,
+    leftEyeXScale: 0.5,
+    rightEyeXScale: 0.1,
+    eyeSizeScale: 0.3,
+    tankLegWidth: 12,
+    tankLegHeight: 8,
+    tankLeftLegXOffset: 4,
+    tankRightLegXOffset: 16,
+    shakeAmount: 2,
+  },
   guns: [
     { name: 'Pistol', baseInterval: 700, upgradeIntervals: [500, 350, 200] },
     { name: 'SMG', baseInterval: 180, upgradeIntervals: [140, 100, 70] },
@@ -145,6 +183,7 @@ let animFrameId = null;
 let pendingGunIndex = -1;
 let defeatFlashTimer = 0;
 let audioCtx = null;
+let autoIncrementId = 1;
 
 function init() {
   canvas = document.getElementById('gameCanvas');
@@ -223,13 +262,163 @@ function gameLoop(timestamp) {
 }
 
 function update(dt, timestamp) {
-  void dt;
-  void timestamp;
+  const elapsed = performance.now() - waveStartTime;
+  while (spawnQueue.length > 0 && spawnQueue[0].spawnAt <= elapsed) {
+    const entry = spawnQueue.shift();
+    spawnZombie(entry.type, entry.lane);
+  }
+
+  if (spawnQueue.length === 0) {
+    allSpawned = true;
+  }
+
+  for (const zombie of zombies) {
+    zombie.y += CONFIG.zombieSpeed * (dt / 1000);
+    zombie.bobPhase += dt * CONFIG.zombieVisuals.bobRate;
+    zombie.opacity = Math.min(1, zombie.opacity + dt * CONFIG.zombieVisuals.spawnFadeRate);
+    zombie.flashTimer = Math.max(0, zombie.flashTimer - dt);
+
+    if (zombie.flashTimer <= 0) {
+      zombie.shakeOffset = null;
+    } else {
+      zombie.shakeOffset = {
+        x: randomRange(-CONFIG.zombieVisuals.shakeAmount, CONFIG.zombieVisuals.shakeAmount),
+        y: randomRange(-CONFIG.zombieVisuals.shakeAmount, CONFIG.zombieVisuals.shakeAmount),
+      };
+    }
+  }
+
+  if (timestamp - lastFireTime >= fireInterval()) {
+    bullets.push({
+      lane: playerLane,
+      y: CONFIG.bullet.spawnY,
+      dead: false,
+    });
+    lastFireTime = timestamp;
+    muzzleFlashTimer = CONFIG.bullet.muzzleFlashDuration;
+    playShotSound();
+  }
+
+  for (const bullet of bullets) {
+    bullet.y -= CONFIG.bulletSpeed * (dt / 1000);
+    if (bullet.y + CONFIG.bullet.height < 0) {
+      bullet.dead = true;
+    }
+  }
+
+  bullets = bullets.filter((bullet) => !bullet.dead);
 }
 
 function render(dt) {
   drawBackground();
+  const sortedZombies = [...zombies].sort((a, b) => a.y - b.y);
+  for (const zombie of sortedZombies) {
+    drawZombie(ctx, zombie);
+  }
+  for (const bullet of bullets) {
+    drawBullet(ctx, bullet);
+  }
   drawPlayer(ctx, dt);
+}
+
+function drawBullet(ctx, bullet) {
+  const cx = laneCenter(bullet.lane);
+  const halfWidth = CONFIG.bullet.width / 2;
+
+  ctx.fillStyle = CONFIG.bullet.trailColor;
+  ctx.fillRect(
+    cx - halfWidth,
+    bullet.y + CONFIG.bullet.trailOffsetY,
+    CONFIG.bullet.width,
+    CONFIG.bullet.trailHeight
+  );
+
+  ctx.fillStyle = CONFIG.bullet.leadColor;
+  ctx.fillRect(cx - halfWidth, bullet.y, CONFIG.bullet.width, CONFIG.bullet.height);
+}
+
+function drawZombie(ctx, zombie) {
+  const shakeX = zombie.shakeOffset ? zombie.shakeOffset.x : 0;
+  const shakeY = zombie.shakeOffset ? zombie.shakeOffset.y : 0;
+  const cx = laneCenter(zombie.lane) + shakeX;
+  const ty = zombie.y + shakeY + Math.sin(zombie.bobPhase) * CONFIG.zombieVisuals.bobAmplitude;
+  const halfWidth = zombie.bodyWidth / 2;
+  const bodyColor = zombie.flashTimer > 0 ? CONFIG.zombieVisuals.hitFlashColor : zombie.bodyColor;
+  const headColor = zombie.flashTimer > 0 ? CONFIG.zombieVisuals.hitFlashColor : zombie.headColor;
+
+  ctx.globalAlpha = Math.min(1, zombie.opacity);
+
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(cx - halfWidth, ty, zombie.bodyWidth, zombie.bodyHeight);
+  ctx.strokeStyle = CONFIG.zombieVisuals.outlineColor;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(cx - halfWidth, ty, zombie.bodyWidth, zombie.bodyHeight);
+
+  const headRadius = zombie.bodyWidth * CONFIG.zombieVisuals.headRadiusScale;
+  ctx.fillStyle = headColor;
+  ctx.beginPath();
+  ctx.arc(cx + zombie.headOffsetX, ty - headRadius * CONFIG.zombieVisuals.headYOffsetScale, headRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = CONFIG.zombieVisuals.outlineColor;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  const eyeY = ty
+    - headRadius * CONFIG.zombieVisuals.headYOffsetScale
+    - headRadius * CONFIG.zombieVisuals.eyeYOffsetScale;
+  ctx.fillStyle = zombie.eyeColor;
+  ctx.fillRect(
+    cx + zombie.headOffsetX - headRadius * CONFIG.zombieVisuals.leftEyeXScale,
+    eyeY,
+    headRadius * CONFIG.zombieVisuals.eyeSizeScale,
+    headRadius * CONFIG.zombieVisuals.eyeSizeScale
+  );
+  ctx.fillRect(
+    cx + zombie.headOffsetX + headRadius * CONFIG.zombieVisuals.rightEyeXScale,
+    eyeY,
+    headRadius * CONFIG.zombieVisuals.eyeSizeScale,
+    headRadius * CONFIG.zombieVisuals.eyeSizeScale
+  );
+
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(
+    cx - halfWidth - zombie.armLength,
+    ty + zombie.armOffsetY,
+    zombie.armLength,
+    zombie.armThickness
+  );
+  ctx.fillRect(cx + halfWidth, ty + zombie.armOffsetY, zombie.armLengthRight, zombie.armThickness);
+
+  if (zombie.type === 'tank') {
+    ctx.fillRect(
+      cx - halfWidth + CONFIG.zombieVisuals.tankLeftLegXOffset,
+      ty + zombie.bodyHeight,
+      CONFIG.zombieVisuals.tankLegWidth,
+      CONFIG.zombieVisuals.tankLegHeight
+    );
+    ctx.fillRect(
+      cx + halfWidth - CONFIG.zombieVisuals.tankRightLegXOffset,
+      ty + zombie.bodyHeight,
+      CONFIG.zombieVisuals.tankLegWidth,
+      CONFIG.zombieVisuals.tankLegHeight
+    );
+  }
+
+  const barY = ty
+    - headRadius * CONFIG.zombieVisuals.healthBarHeadScale
+    - CONFIG.zombieVisuals.healthBarYOffset;
+  const barWidth = zombie.bodyWidth + CONFIG.zombieVisuals.healthBarExtraWidth;
+  const healthRatio = zombie.hp / zombie.maxHp;
+  ctx.fillStyle = CONFIG.zombieVisuals.healthBackColor;
+  ctx.fillRect(cx - barWidth / 2, barY, barWidth, CONFIG.zombieVisuals.healthBarHeight);
+  ctx.fillStyle = healthRatio > CONFIG.zombieVisuals.healthHighThreshold
+    ? CONFIG.zombieVisuals.healthHighColor
+    : healthRatio > CONFIG.zombieVisuals.healthMidThreshold
+      ? CONFIG.zombieVisuals.healthMidColor
+      : CONFIG.zombieVisuals.healthLowColor;
+  ctx.fillRect(cx - barWidth / 2, barY, barWidth * healthRatio, CONFIG.zombieVisuals.healthBarHeight);
+
+  ctx.globalAlpha = 1;
 }
 
 function drawPlayer(ctx, dt) {
@@ -272,6 +461,12 @@ function startGame() {
 
 function startWave() {
   gameState = STATE_PLAYING;
+  zombies = [];
+  bullets = [];
+  spawnQueue = buildSpawnQueue(currentWave - 1);
+  waveStartTime = performance.now();
+  allSpawned = false;
+  lastFireTime = 0;
   hideAllOverlays();
   updateHUD();
   console.info('startWave called');
@@ -330,8 +525,15 @@ function resetGame() {
 }
 
 function handleMovement(event) {
-  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-  console.info('handleMovement called');
+  if (gameState !== STATE_PLAYING && gameState !== STATE_WAVE_WAIT) return;
+
+  if (event.key === 'ArrowLeft' && playerLane > 0) {
+    playerLane--;
+  }
+
+  if (event.key === 'ArrowRight' && playerLane < CONFIG.canvas.laneCount - 1) {
+    playerLane++;
+  }
 }
 
 function updateHUD() {
@@ -387,6 +589,92 @@ function hideAllOverlays() {
 
 function laneCenter(lane) {
   return lane * CONFIG.canvas.laneWidth + CONFIG.canvas.laneWidth / 2;
+}
+
+function spawnZombie(type, lane) {
+  const zombieConfig = CONFIG.zombieTypes[type];
+  zombies.push({
+    id: autoIncrementId++,
+    type,
+    hp: zombieConfig.hp,
+    maxHp: zombieConfig.hp,
+    lane,
+    y: CONFIG.canvas.zombieSpawnY,
+    coinReward: zombieConfig.coinReward,
+    dead: false,
+    bodyWidth: zombieConfig.bodyWidth,
+    bodyHeight: zombieConfig.bodyHeight,
+    height: zombieConfig.bodyHeight,
+    bodyColor: zombieConfig.bodyColor,
+    headColor: zombieConfig.headColor,
+    eyeColor: zombieConfig.eyeColor,
+    headOffsetX: zombieConfig.headOffsetX,
+    armLength: zombieConfig.armLength,
+    armLengthRight: zombieConfig.armLengthRight,
+    armOffsetY: zombieConfig.armOffsetY,
+    armThickness: zombieConfig.armThickness,
+    opacity: 0,
+    bobPhase: Math.random() * Math.PI * 2,
+    flashTimer: 0,
+    shakeOffset: null,
+  });
+}
+
+function buildSpawnQueue(waveIndex) {
+  const waveConfig = CONFIG.waveConfigs[waveIndex];
+  const types = [];
+
+  for (let i = 0; i < waveConfig.grunts; i++) types.push('grunt');
+  for (let i = 0; i < waveConfig.maulers; i++) types.push('mauler');
+  for (let i = 0; i < waveConfig.tanks; i++) types.push('tank');
+
+  for (let i = types.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [types[i], types[j]] = [types[j], types[i]];
+  }
+
+  return types.map((type, index) => ({
+    type,
+    lane: Math.floor(Math.random() * CONFIG.canvas.laneCount),
+    spawnAt: index * CONFIG.spawnInterval,
+  }));
+}
+
+function randomRange(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
+function fireInterval() {
+  if (fireUpgradeTier === 0) return CONFIG.guns[currentGun].baseInterval;
+  return CONFIG.guns[currentGun].upgradeIntervals[fireUpgradeTier - 1];
+}
+
+function ensureAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}
+
+function playShotSound() {
+  ensureAudio();
+
+  const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.08, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for (let i = 0; i < data.length; i++) {
+    data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  }
+
+  const source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+
+  source.connect(gain);
+  gain.connect(audioCtx.destination);
+  source.start();
 }
 
 document.addEventListener('DOMContentLoaded', init);
