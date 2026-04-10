@@ -547,10 +547,16 @@ function enterDefeat() {
 }
 
 function buyFireUpgrade() {
-  console.info('buyFireUpgrade called');
+  if (!canBuyFireRate()) return;
+
+  coins -= CONFIG.fireUpgradeCosts[fireUpgradeTier];
+  fireUpgradeTier++;
+  updateHUD();
 }
 
 function triggerGunUnlock() {
+  if (!canUnlockGun()) return;
+
   gameState = STATE_QUESTION;
   pendingGunIndex = currentGun + 1;
   hideAllOverlays();
@@ -627,6 +633,16 @@ function updateUpgradeButtons() {
     gunBtn.disabled = true;
     gunBtn.textContent = 'Max Gun';
   }
+}
+
+function canBuyFireRate() {
+  return fireUpgradeTier < CONFIG.fireUpgradeCosts.length &&
+    coins >= CONFIG.fireUpgradeCosts[fireUpgradeTier];
+}
+
+function canUnlockGun() {
+  return currentGun < CONFIG.guns.length - 1 &&
+    coins >= CONFIG.gunUnlockCosts[currentGun + 1];
 }
 
 function showOverlay(id) {

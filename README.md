@@ -1,6 +1,6 @@
 # Zombie Lane Defense
 
-Self-contained browser game scaffold for an HTML5 Canvas lane-defense game. This repository is implemented in milestones from `SPEC.md`; the current state is Milestone 8 only.
+Self-contained browser game scaffold for an HTML5 Canvas lane-defense game. This repository is implemented in milestones from `SPEC.md`; the current state is Milestone 9 only.
 
 ## Current Milestone
 
@@ -8,10 +8,10 @@ Milestones completed:
 
 - `index.html` with the canvas, HUD sidebar, and all required overlay elements.
 - `style.css` with the page layout, overlay visibility rules, button states, and HUD styling.
-- `script.js` with the top-level `CONFIG` object, state constants, core state variables, DOM initialization, HUD syncing, overlay helpers, stubbed event handlers, static lane rendering, the player sprite, keyboard lane movement, the bullet firing loop, zombie spawning/movement/rendering, collision/combat checks, and wave flow.
+- `script.js` with the top-level `CONFIG` object, state constants, core state variables, DOM initialization, HUD syncing, overlay helpers, static lane rendering, the player sprite, keyboard lane movement, the bullet firing loop, zombie spawning/movement/rendering, collision/combat checks, wave flow, and fire-rate upgrade purchases.
 - `README.md` with project and deployment notes.
 
-Upgrades, questions, and full reset polish are intentionally not implemented yet.
+Gun unlock questions and full reset polish are intentionally not implemented yet.
 
 ## Run Locally
 
