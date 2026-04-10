@@ -77,6 +77,11 @@ const CONFIG = {
     shakeAmount: 2,
     hitFlashDuration: 100,
   },
+  soundtrack: {
+    src: '91476_Glorious_morning.mp3',
+    loop: true,
+    volume: 0.45,
+  },
   guns: [
     { name: 'Pistol', intervals: [560, 470, 390, 320] },
     { name: 'SMG', intervals: [290, 245, 210, 180] },
@@ -248,11 +253,13 @@ let animFrameId = null;
 let pendingGunIndex = -1;
 let defeatFlashTimer = 0;
 let audioCtx = null;
+let soundtrackEl = null;
 let autoIncrementId = 1;
 
 function init() {
   canvas = document.getElementById('gameCanvas');
   ctx = canvas.getContext('2d');
+  initSoundtrack();
 
   initEventListeners();
   updateHUD();
@@ -266,32 +273,39 @@ function init() {
 function initEventListeners() {
   document.getElementById('btn-play').addEventListener('click', () => {
     ensureAudio();
+    startSoundtrack();
     startGame();
   });
   document.getElementById('btn-start-wave').addEventListener('click', () => {
     ensureAudio();
+    startSoundtrack();
     startWave();
   });
   document.getElementById('btn-fire-upgrade').addEventListener('click', () => {
     ensureAudio();
+    startSoundtrack();
     buyFireUpgrade();
   });
   document.getElementById('btn-gun-unlock').addEventListener('click', () => {
     ensureAudio();
+    startSoundtrack();
     triggerGunUnlock();
   });
   document.getElementById('btn-submit-answer').addEventListener('click', () => {
     ensureAudio();
+    startSoundtrack();
     checkAnswer();
   });
   document.getElementById('answer-input').addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       ensureAudio();
+      startSoundtrack();
       checkAnswer();
     }
   });
   document.getElementById('btn-retry').addEventListener('click', () => {
     ensureAudio();
+    startSoundtrack();
     resetGame();
   });
   document.addEventListener('keydown', handleMovement);
@@ -875,6 +889,22 @@ function ensureAudio() {
 
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
+  }
+}
+
+function initSoundtrack() {
+  soundtrackEl = new Audio(CONFIG.soundtrack.src);
+  soundtrackEl.loop = CONFIG.soundtrack.loop;
+  soundtrackEl.volume = CONFIG.soundtrack.volume;
+  soundtrackEl.preload = 'auto';
+}
+
+function startSoundtrack() {
+  if (!soundtrackEl || !soundtrackEl.paused) return;
+
+  const playPromise = soundtrackEl.play();
+  if (playPromise && typeof playPromise.catch === 'function') {
+    playPromise.catch(() => {});
   }
 }
 

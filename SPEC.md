@@ -68,7 +68,7 @@ The progression is predictable: a player who kills most zombies in every wave wi
 | `script.js` | 100% of game logic: CONFIG block, state machine, game loop, entity systems, rendering, input, UI wiring. |
 | `README.md` | Deploy instructions, how to edit questions/waves/upgrades. |
 
-No framework. No build step. No external fonts, images, or CDN imports. Audio is generated programmatically via the Web Audio API (no audio files). All paths relative. `script.js` loaded with `<script src="script.js"></script>` at bottom of `<body>`.
+No framework. No build step. No external fonts, images, or CDN imports. Sound effects are generated programmatically via the Web Audio API. Background music may be loaded from a local audio file in the project directory via standard HTML5 audio. All paths relative. `script.js` loaded with `<script src="script.js"></script>` at bottom of `<body>`.
 
 ---
 

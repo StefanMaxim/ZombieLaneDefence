@@ -2,6 +2,8 @@
 
 Zombie Lane Defense is a self-contained browser game built with vanilla HTML, CSS, and JavaScript. Rendering is done with the HTML5 Canvas 2D API. There is no build step and no external assets, so the project can be served directly from a static host such as GitHub Pages.
 
+The game also includes a looping soundtrack loaded from a local MP3 in the project root: `91476_Glorious_morning.mp3`.
+
 ## Run locally
 
 You can either:
@@ -119,6 +121,26 @@ To slow all zombies globally, lower `zombieSpeed`. For per-wave variation, leave
 - `style.css`: layout and UI styling
 - `script.js`: game logic, state, rendering, input, audio
 - `README.md`: usage and deployment notes
+
+## Soundtrack
+
+The background music is configured in the top-level `CONFIG.soundtrack` block in `script.js`:
+
+```js
+soundtrack: {
+  src: '91476_Glorious_morning.mp3',
+  loop: true,
+  volume: 0.45,
+}
+```
+
+To replace the music later:
+
+1. Put the new audio file in the project root
+2. Change `CONFIG.soundtrack.src` to the exact filename, including extension
+3. Adjust `volume` if needed
+
+Browser autoplay rules may block music before the first user gesture. The game works around that by starting the soundtrack on the first valid interaction such as `Play`, `Start Wave`, `Buy Fire Rate`, `Unlock Gun`, `Submit`, or `Try Again`. After that first interaction, the track keeps looping across title, gameplay, wave transitions, question prompts, victory, and defeat.
 
 ## GitHub Pages deployment
 
