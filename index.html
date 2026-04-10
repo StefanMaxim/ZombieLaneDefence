@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zombie Lane Defense</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="game-wrapper" aria-label="Zombie Lane Defense game">
+    <section id="canvas-area" aria-label="Game canvas area">
+      <canvas id="gameCanvas" width="600" height="550">
+        Your browser does not support HTML5 Canvas.
+      </canvas>
+
+      <div id="overlay-title" class="overlay">
+        <h1>Zombie Lane Defense</h1>
+        <button id="btn-play" type="button">Play</button>
+      </div>
+
+      <div id="overlay-wave-wait" class="overlay hidden">
+        <p id="wave-wait-text">Wave 1 incoming!</p>
+        <button id="btn-start-wave" type="button">Start Wave 1</button>
+      </div>
+
+      <div id="overlay-question" class="overlay hidden">
+        <p class="question-label">Answer to unlock next gun:</p>
+        <p class="question-text" id="question-text"></p>
+        <input type="text" id="answer-input" autocomplete="off" placeholder="Type answer...">
+        <button id="btn-submit-answer" type="button">Submit</button>
+        <p class="question-error hidden" id="question-error">Incorrect - please try again.</p>
+      </div>
+
+      <div id="overlay-victory" class="overlay hidden">
+        <h2>Victory!</h2>
+        <p>You survived all 10 waves!</p>
+      </div>
+
+      <div id="overlay-defeat" class="overlay hidden">
+        <h2>Defeated!</h2>
+        <p>A zombie reached you.</p>
+        <button id="btn-retry" type="button">Try Again</button>
+      </div>
+    </section>
+
+    <aside id="hud" aria-label="Game status and upgrades">
+      <h2>HUD</h2>
+      <div id="hud-wave">Wave: 1 / 10</div>
+      <div id="hud-coins">Coins: 0</div>
+      <div id="hud-gun">Gun: Pistol</div>
+      <div id="hud-tier">Fire Tier: 0 / 3</div>
+      <hr>
+      <button id="btn-fire-upgrade" type="button">Buy Fire Rate (50c)</button>
+      <button id="btn-gun-unlock" type="button">Unlock SMG (300c)</button>
+    </aside>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -987,7 +987,7 @@ Each step produces a testable milestone before moving to the next.
 - **Testable**: Wave starts on button click; after all zombies die, wave-wait appears; wave 10 clear triggers victory; wave 11 never starts
 
 ### Step 9 — HUD + upgrade buttons
-- Implement full `updateHUD()` and `updateUpgradeButtons()`
+- Implement full `updateHUD()` and `updatexUpgradeButtons()`
 - Ensure buttons disabled during `STATE_QUESTION`
 - Implement `buyFireUpgrade()`: deduct coins, increment tier, update HUD — **no question**
 - **Testable**: Fire rate button deducts coins and speeds up firing; disables at tier 3; shows correct cost; buttons disabled during question overlay
