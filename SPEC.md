@@ -6,6 +6,45 @@ Building a self-contained browser game from scratch. The repository starts compl
 
 ---
 
+## Design Overview
+
+### Core Design Direction
+
+This game is explicitly designed as a **short, presentation-friendly experience**:
+
+- Total runtime: **≤ 5 minutes** across all 10 waves
+- Smooth, achievable progression — player should succeed on first or second attempt
+- Clear upgrade milestones tied to 3-wave blocks
+- No grinding, no punishing difficulty spikes
+- Designed for demonstration, not endurance
+
+All systems — economy, wave composition, spawn pacing — must support this goal.
+
+### Progression Model
+
+The 10-wave game is structured in **3-wave blocks per gun**:
+
+| Block | Waves | Goal |
+|-------|-------|------|
+| Gun 1 block | 1–3 | Earn enough to buy all 3 fire-rate tiers for Gun 1 (55 coins total) + unlock Gun 2 (35 coins) |
+| Gun 2 block | 4–6 | Earn enough to buy all 3 fire-rate tiers for Gun 2 (55 coins total) + unlock Gun 3 (55 coins) |
+| Gun 3 block | 7–9 | Earn enough to buy all 3 fire-rate tiers for Gun 3 (55 coins total) |
+| Victory wave | 10   | Final challenge wave — no further upgrades required |
+
+**Economy per block:** Waves 1–3 yield ~91 coins cumulative. Waves 4–6 yield ~91 coins. Waves 7–9 yield ~71 coins. Wave 10 yields ~74 coins on its own.
+
+The progression is predictable: a player who kills all zombies in every wave will always have enough coins to unlock all upgrades on schedule.
+
+### Balance Philosophy
+
+- Progression is **structured and predictable**, not dependent on skill variance
+- **Upgrades are guaranteed** if the player performs reasonably (kills most zombies)
+- Economy is tuned around **wave blocks**, not individual wave randomness
+- Early waves must not feel punishing — wave 1 is intentionally gentle
+- The game is designed for **demonstration** (e.g. a classroom or presentation setting), not a challenge loop
+
+---
+
 ## 1. Architecture
 
 ### Files to create
@@ -29,10 +68,25 @@ No framework. No build step. No external fonts, images, or CDN imports. Audio is
 STATE_TITLE        — title screen visible, canvas idle
 STATE_WAVE_WAIT    — between waves; HUD visible; "Start Wave N" button visible
 STATE_PLAYING      — active wave; game loop runs update(); auto-fire active
-STATE_QUESTION     — gun-unlock question overlay shown; loop still renders but skips update
+STATE_QUESTION     — gun-unlock question overlay shown; loop renders only — update() is FULLY
+                     GATED. Zero gameplay logic runs: no zombie movement, no spawning, no bullets,
+                     no auto-fire, no collision checks, no defeat possible.
 STATE_VICTORY      — wave 10 cleared; victory overlay shown
 STATE_DEFEAT       — zombie touched player; defeat overlay shown briefly before reset
 ```
+
+### Hard-pause guarantee for STATE_QUESTION
+
+`update()` is wrapped as follows:
+
+```javascript
+function update(dt, timestamp) {
+  if (gameState !== STATE_PLAYING) return; // hard gate — nothing runs in any other state
+  // ... all gameplay logic below
+}
+```
+
+This ensures that while the question overlay is open, the game world is completely frozen. The player cannot be defeated and no state changes occur.
 
 ### Core variables
 
@@ -92,6 +146,7 @@ PLAYING     — any zombie reaches    → DEFEAT (brief flash) → resetGame() �
 WAVE_WAIT   — click "Unlock Gun"    → QUESTION (saves pendingGunIndex; coins NOT deducted yet)
 QUESTION    — correct answer        → WAVE_WAIT (gun unlocked, coins deducted, tier reset)
 QUESTION    — wrong answer          → stays QUESTION (shows error; coins NOT consumed)
+              *** update() runs NO logic in STATE_QUESTION — world is fully paused ***
 VICTORY     — terminal; only page refresh resets
 ```
 
@@ -378,7 +433,7 @@ function gameLoop(timestamp) {
 }
 ```
 
-`requestAnimationFrame` starts once on page load and runs forever. State gate inside `update()` ensures logic only runs during `STATE_PLAYING`.
+`requestAnimationFrame` starts once on page load and runs forever. `update()` only runs when `gameState === STATE_PLAYING` — this is the hard gate that fully pauses gameplay during STATE_QUESTION and all other non-playing states.
 
 ### `update(dt, timestamp)` — execution order
 
@@ -531,9 +586,12 @@ const GUNS = [
 ];
 // upgradeIntervals[0] = tier 1, [1] = tier 2, [2] = tier 3 (milliseconds between shots)
 
-const FIRE_UPGRADE_COSTS = [50, 120, 250];  // cost for tier 1, 2, 3 (default values)
-const GUN_UNLOCK_COSTS   = [0, 300, 700];   // index = gun index; 0 = free (Gun 1)
+// Costs are tuned to the 3-wave block progression model (see Design Overview)
+const FIRE_UPGRADE_COSTS = [10, 20, 25];  // Tier 1, 2, 3 — total 55 coins per gun block
+const GUN_UNLOCK_COSTS   = [0, 35, 55];   // Gun 0 free; Gun 1 = 35c; Gun 2 = 55c
 ```
+
+**Upgrade cost rationale:** Each 3-wave block yields ~91 coins (waves 1–3 and 4–6). Spending 55 coins on fire-rate upgrades + 35–55 coins on the next gun unlock leaves a small buffer. The player is never starved if they kill the majority of zombies.
 
 ### Fire rate calculation
 
@@ -639,6 +697,8 @@ Entering STATE_QUESTION:
 5. Focus `#answer-input`
 6. Disable upgrade buttons while overlay is open (to prevent double-click issues — see Section 13)
 
+**While STATE_QUESTION is active:** `update()` does not run. The game world is fully paused. The player cannot be defeated. No coins can be lost or gained.
+
 ### Answer normalization
 
 ```javascript
@@ -662,28 +722,61 @@ Show `.question-error` with text "Incorrect — please try again." Do not close 
 
 ## 8. Wave System
 
+### Game Duration Requirement
+
+> The full game (10 waves) must complete in **≤ 5 minutes**.
+
+Supporting constraints:
+- Default `SPAWN_INTERVAL`: **850 ms** (range 800–900 ms acceptable)
+- Total enemies across all 10 waves: **~86** (see composition table below) — within the 80–100 target
+- Tanks appear **only in Wave 10** — no HP sponges in early/mid game
+- Player should not feel stuck waiting for zombies to spawn or die
+
 ### WAVE_CONFIGS (top of script.js — easy to edit)
 
-> **All values below are defaults.** Adjust counts and timing to tune difficulty.
+> **All values below are defaults.** Adjust counts to tune difficulty, but maintain the coin targets in the table below.
 
 ```javascript
 const WAVE_CONFIGS = [
-  { grunts:  8, maulers:  0, tanks: 0 },  // Wave 1
-  { grunts: 10, maulers:  2, tanks: 0 },  // Wave 2
-  { grunts: 10, maulers:  4, tanks: 0 },  // Wave 3
-  { grunts:  8, maulers:  5, tanks: 0 },  // Wave 4
-  { grunts:  8, maulers:  6, tanks: 1 },  // Wave 5
-  { grunts:  6, maulers:  8, tanks: 1 },  // Wave 6
-  { grunts:  5, maulers:  8, tanks: 2 },  // Wave 7
-  { grunts:  5, maulers:  8, tanks: 3 },  // Wave 8
-  { grunts:  4, maulers: 10, tanks: 4 },  // Wave 9
-  { grunts:  5, maulers: 12, tanks: 6 },  // Wave 10
+  { grunts: 10, maulers:  0, tanks: 0 },  // W1  — 10 enemies
+  { grunts:  3, maulers:  2, tanks: 0 },  // W2  — 5 enemies
+  { grunts:  8, maulers:  5, tanks: 0 },  // W3  — 13 enemies
+  { grunts: 10, maulers:  0, tanks: 0 },  // W4  — 10 enemies
+  { grunts:  3, maulers:  2, tanks: 0 },  // W5  — 5 enemies
+  { grunts:  8, maulers:  5, tanks: 0 },  // W6  — 13 enemies
+  { grunts: 10, maulers:  0, tanks: 0 },  // W7  — 10 enemies
+  { grunts:  3, maulers:  2, tanks: 0 },  // W8  — 5 enemies
+  { grunts:  8, maulers:  3, tanks: 0 },  // W9  — 11 enemies
+  { grunts:  4, maulers:  2, tanks: 1 },  // W10 — 7 enemies (1 tank)
 ];
-const SPAWN_INTERVAL = 1500;  // ms between zombie spawns (default — tunable)
-const ZOMBIE_SPEED   = 80;    // pixels per second (default — tunable)
-const BULLET_SPEED   = 420;   // pixels per second (default — tunable)
-const PLAYER_Y       = 480;   // y-coordinate that triggers defeat when zombie reaches it
+// Total enemies: 86
+
+const SPAWN_INTERVAL = 850;  // ms between zombie spawns — supports ≤5 min runtime
+const ZOMBIE_SPEED   = 80;   // pixels per second (default — tunable)
+const BULLET_SPEED   = 420;  // pixels per second (default — tunable)
+const PLAYER_Y       = 480;  // y-coordinate that triggers defeat when zombie reaches it
 ```
+
+### Wave Economy Table
+
+The following table shows the intended coin yield and cumulative economy for each wave. Compositions are designed to hit these targets with zombie values: Grunt = 1 coin, Mauler = 10 coins, Tank = 50 coins.
+
+| Wave | Composition | Coins this wave | Cumulative (in block) | Upgrade milestone |
+|------|-------------|-----------------|----------------------|-------------------|
+| 1 | 10G | ~10 | ~10 | Buy Fire Tier 1 (10c) |
+| 2 | 3G + 2M | ~23 | ~33 | Buy Fire Tier 2 (20c) |
+| 3 | 8G + 5M | ~58 | ~91 | Buy Fire Tier 3 (25c) + Unlock Gun 2 (35c) |
+| 4 | 10G | ~10 | ~10 | Buy Fire Tier 1 (10c) |
+| 5 | 3G + 2M | ~23 | ~33 | Buy Fire Tier 2 (20c) |
+| 6 | 8G + 5M | ~58 | ~91 | Buy Fire Tier 3 (25c) + Unlock Gun 3 (55c) |
+| 7 | 10G | ~10 | ~10 | Buy Fire Tier 1 (10c) |
+| 8 | 3G + 2M | ~23 | ~33 | Buy Fire Tier 2 (20c) |
+| 9 | 8G + 3M | ~38 | ~71 | Buy Fire Tier 3 (25c) — buffer remaining |
+| 10 | 4G + 2M + 1T | ~74 | — | Victory — no further upgrades needed |
+
+*G = Grunt (1c), M = Mauler (10c), T = Tank (50c). Cumulative columns reset per gun block.*
+
+**Note:** Cumulative columns for waves 1–3, 4–6, and 7–9 are shown relative to the start of each block. The player enters each block at 0 spendable coins (having spent on the previous block's upgrades).
 
 ### Wave start (`startWave()`)
 
@@ -778,8 +871,8 @@ if (allSpawned && zombies.length === 0) endWave();
       <div id="hud-gun">Gun: Pistol</div>
       <div id="hud-tier">Fire Tier: 0 / 3</div>
       <hr>
-      <button id="btn-fire-upgrade">Buy Fire Rate (50c)</button>
-      <button id="btn-gun-unlock">Unlock SMG (300c)</button>
+      <button id="btn-fire-upgrade">Buy Fire Rate (10c)</button>
+      <button id="btn-gun-unlock">Unlock SMG (35c)</button>
     </div>
   </div>
   <script src="script.js"></script>
@@ -984,18 +1077,19 @@ Each step produces a testable milestone before moving to the next.
 ### Step 8 — Wave flow (start, complete, advance)
 - Implement `startWave()`, `endWave()`, wave completion check (after cleanup step)
 - Wire "Start Wave N" button; update label each wave
-- **Testable**: Wave starts on button click; after all zombies die, wave-wait appears; wave 10 clear triggers victory; wave 11 never starts
+- **Testable**: Wave starts on button click; after all zombies die wave-wait appears; wave 10 clear triggers victory; wave 11 never starts
 
 ### Step 9 — HUD + upgrade buttons
-- Implement full `updateHUD()` and `updatexUpgradeButtons()`
+- Implement full `updateHUD()` and `updateUpgradeButtons()`
 - Ensure buttons disabled during `STATE_QUESTION`
 - Implement `buyFireUpgrade()`: deduct coins, increment tier, update HUD — **no question**
-- **Testable**: Fire rate button deducts coins and speeds up firing; disables at tier 3; shows correct cost; buttons disabled during question overlay
+- **Testable**: Fire rate button starts at 10c, then 20c, then 25c; disables at tier 3 (shows "Fire Rate MAX"); gun unlock shows "Unlock SMG (35c)" then "Unlock Railgun (55c)"; buttons disabled during question overlay
 
 ### Step 10 — Gun unlock + question system
 - Implement `triggerGunUnlock()`: validate coins, set `pendingGunIndex`, show question overlay — **do not deduct coins**
 - Implement `checkAnswer()`: normalize input; if correct deduct coins, set gun, reset tier, return to WAVE_WAIT; if wrong show error, leave coins untouched
-- **Testable**: Accumulate coins; click Unlock; question overlay appears; wrong answer shows error, coins unchanged; correct answer unlocks gun and deducts coins; fire tier resets; Gun 3 disables unlock button permanently
+- Confirm `update()` is fully gated — world is frozen during STATE_QUESTION
+- **Testable**: Accumulate coins; click Unlock; question overlay appears; wrong answer shows error, coins unchanged, world stays frozen; correct answer unlocks gun and deducts coins; fire tier resets; Gun 3 disables unlock permanently
 
 ### Step 11 — Defeat and full reset
 - Implement `enterDefeat()` with `defeatFlashTimer = 300`
@@ -1015,7 +1109,8 @@ Each step produces a testable milestone before moving to the next.
 ### Step 14 — README + final polish check
 - Write `README.md` with: how to run locally, how to edit questions/answers, how to adjust wave config and upgrade values, how to deploy on GitHub Pages
 - Verify all Game Feel effects are working: easing, lane highlight, bullet trail, zombie fade-in, bob, hit shake, muzzle flash, screen flash
-- **Testable**: Deploy to GitHub Pages subdirectory; all paths load; game fully playable from deployed URL; all visual effects visible
+- Do a full 10-wave playthrough and confirm it completes within 5 minutes
+- **Testable**: Deploy to GitHub Pages subdirectory; all paths load; game fully playable from deployed URL; all visual effects visible; full run ≤5 min
 
 ---
 
@@ -1034,6 +1129,7 @@ Each of the following must be explicitly handled in the implementation:
 | Zombies persisting after reset | `resetGame()` sets `zombies = []; bullets = []; spawnQueue = [];` — all entity arrays explicitly cleared. |
 | AudioContext blocked by browser autoplay policy | `audioCtx` is `null` at startup. `ensureAudio()` creates it inside sound functions, which are only called in response to user-initiated gameplay after first interaction. |
 | Player cannot dodge defeat by switching lanes | Defeat collision check has no lane guard — switching lanes while a zombie is at `PLAYER_Y` has no effect. |
+| Gameplay during question overlay | `update()` is gated by `if (gameState !== STATE_PLAYING) return;` — no movement, spawning, collision, or defeat can occur. |
 
 ---
 
@@ -1044,8 +1140,8 @@ Every function to implement in `script.js`, with its exact responsibility:
 | Function | Responsibility |
 |----------|---------------|
 | `init()` | Entry point on `DOMContentLoaded`; wires all event listeners, initializes canvas context reference, starts RAF loop. |
-| `gameLoop(timestamp)` | RAF callback; computes capped `dt`; calls `update(dt, ts)` if `STATE_PLAYING`; ticks effect timers; calls `render(dt)`; schedules next frame. |
-| `update(dt, timestamp)` | All per-frame game logic: spawn check, zombie movement + effects, auto-fire, bullet movement, bullet-zombie collision, player-zombie collision, entity cleanup, wave completion check. |
+| `gameLoop(timestamp)` | RAF callback; computes capped `dt`; calls `update(dt, ts)` only if `STATE_PLAYING`; ticks effect timers; calls `render(dt)`; schedules next frame. |
+| `update(dt, timestamp)` | All per-frame game logic: spawn check, zombie movement + effects, auto-fire, bullet movement, bullet-zombie collision, player-zombie collision, entity cleanup, wave completion check. Hard-gated: returns immediately if `gameState !== STATE_PLAYING`. |
 | `render(dt)` | Clears canvas and redraws all layers each frame: background, tints, lane highlight, defeat flash overlay, zombies, bullets, player. |
 | `spawnZombie(type, lane)` | Creates a zombie object from `ZOMBIE_TYPES[type]`, initializes effects fields (`opacity = 0`, random `bobPhase`), pushes to `zombies[]`. |
 | `buildSpawnQueue(waveIdx)` | Builds and shuffles a flat list of zombie entries from `WAVE_CONFIGS[waveIdx]`, assigns lanes and `spawnAt` timestamps, returns sorted array. |
@@ -1056,9 +1152,9 @@ Every function to implement in `script.js`, with its exact responsibility:
 | `startWave()` | Clears entity arrays; builds spawn queue; sets `waveStartTime`; transitions to `STATE_PLAYING`; hides wave-wait overlay. |
 | `endWave()` | If wave 10: transitions to `STATE_VICTORY`. Otherwise: increments `currentWave`, updates overlay text, transitions to `STATE_WAVE_WAIT`. |
 | `enterDefeat()` | Sets `STATE_DEFEAT`; sets `defeatFlashTimer = 300`; shows defeat overlay. |
-| `resetGame()` | Resets all state variables to Wave 1 defaults; clears entity arrays; transitions to `STATE_WAVE_WAIT` (not title); shows wave-wait overlay. |
+| `resetGame()` | Resets all state variables to Wave 1 defaults; clears entity arrays and effect timers; transitions to `STATE_WAVE_WAIT` (not title); shows wave-wait overlay. |
 | `updateHUD()` | Syncs wave, coins, gun name, fire tier DOM elements to current game state; calls `updateUpgradeButtons()`. |
-| `updateUpgradeButtons()` | Enables/disables and relabels fire upgrade and gun unlock buttons based on current coins, tiers, and `gameState`. |
+| `updateUpgradeButtons()` | Enables/disables and relabels fire upgrade and gun unlock buttons based on current coins, tiers, and `gameState`. Disables both when `STATE_QUESTION`. |
 | `drawPlayer(ctx, dt)` | Lerps `playerDisplayX` toward `laneCenter(playerLane)`; draws player body, gun barrel, eyes; draws muzzle flash if `muzzleFlashTimer > 0`. |
 | `drawZombie(ctx, z)` | Draws zombie with type-specific silhouette (body rect, head arc, arms, optional legs); applies bob offset, shake offset, opacity, hit flash color override, health bar. |
 | `drawBullet(ctx, b)` | Draws bullet as two stacked rects: dim trailing glow + bright lead rect. |
